@@ -14,7 +14,6 @@ vector<vector<int>>& ChessBoard::getMatrix() {
     return board; 
 }
 
-
 void ChessBoard::setPiece(int x, int y, int value) {
     if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) {
         board[x][y] = value;
@@ -113,6 +112,104 @@ void ChessBoard::drawPieces() {
 }
 
 void ChessBoard::run() {
+    // Load menu background
+    if (!menuTexture.loadFromFile("C:/Users/BL9/Desktop/chess/coding/images/mainscreen.jpg")) {
+        cout << "Failed to load menu background!" << endl;
+        return;
+    }
+    menuSprite.setTexture(menuTexture);
+    
+    // Scale the menu background to fit the window
+    float scaleX = static_cast<float>(WINDOW_WIDTH) / menuTexture.getSize().x;
+    float scaleY = static_cast<float>(WINDOW_HEIGHT) / menuTexture.getSize().y;
+    menuSprite.setScale(scaleX, scaleY);
+
+    // Load font for buttons
+    if (!font.loadFromFile("C:/Users/BL9/Desktop/chess/coding/font/Arial.ttf")) {
+        cout << "Failed to load font!" << endl;
+        return;
+    }
+
+    // Show menu first
+    if (!showMenu()) {
+        window.close();
+        return;
+    }
+
+    // If user selected start, run the game
+    runGame();
+}
+
+bool ChessBoard::showMenu() {
+    // Set window icon
+    Image icon;
+    if (!icon.loadFromFile("C:/Users/BL9/Desktop/chess/coding/images/logo.png")) {
+        cout << "Failed to load window icon!" << endl;
+    } else {
+        window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
+    }
+    // Create start and exit buttons
+    RectangleShape startButton(Vector2f(200, 60));
+    startButton.setPosition(WINDOW_WIDTH/2 - 100, WINDOW_HEIGHT/2 - 40);
+    startButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape exitButton(Vector2f(200, 60));
+    exitButton.setPosition(WINDOW_WIDTH/2 - 100, WINDOW_HEIGHT/2 + 60);
+    exitButton.setFillColor(Color(50, 50, 50, 200));
+
+    Text startText("Start Game", font, 30);
+    startText.setPosition(WINDOW_WIDTH/2 - 80, WINDOW_HEIGHT/2 - 30);
+    startText.setFillColor(Color::White);
+
+    Text exitText("Exit Game", font, 30);
+    exitText.setPosition(WINDOW_WIDTH/2 - 75, WINDOW_HEIGHT/2 + 70);
+    exitText.setFillColor(Color::White);
+
+    while (window.isOpen()) {
+        Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == Event::Closed) {
+                window.close();
+                return false;
+            }
+
+            if (event.type == Event::MouseButtonPressed) {
+                Vector2i mousePos = Mouse::getPosition(window);
+                if (startButton.getGlobalBounds().contains(mousePos.x, mousePos.y)) {
+                    return true; // Start game
+                } else if (exitButton.getGlobalBounds().contains(mousePos.x, mousePos.y)) {
+                    return false; // Exit game
+                }
+            }
+        }
+
+        // Highlight buttons on hover
+        Vector2i mousePos = Mouse::getPosition(window);
+        if (startButton.getGlobalBounds().contains(mousePos.x, mousePos.y)) {
+            startButton.setFillColor(Color(70, 70, 70, 220));
+        } else {
+            startButton.setFillColor(Color(50, 50, 50, 200));
+        }
+
+        if (exitButton.getGlobalBounds().contains(mousePos.x, mousePos.y)) {
+            exitButton.setFillColor(Color(70, 70, 70, 220));
+        } else {
+            exitButton.setFillColor(Color(50, 50, 50, 200));
+        }
+
+        window.clear();
+        window.draw(menuSprite);
+        window.draw(startButton);
+        window.draw(exitButton);
+        window.draw(startText);
+        window.draw(exitText);
+        window.display();
+    }
+
+    return false;
+}
+
+void ChessBoard::runGame() {
     // Set window icon
     Image icon;
     if (!icon.loadFromFile("C:/Users/BL9/Desktop/chess/coding/images/logo.png")) {
@@ -139,6 +236,7 @@ void ChessBoard::run() {
     CircleShape captureIndicator(SQUARE_SIZE / 3);
     captureIndicator.setFillColor(Color(255, 0, 0, 150)); // Red semi-transparent
     captureIndicator.setOrigin(captureIndicator.getRadius(), captureIndicator.getRadius());
+    
     while (window.isOpen()) {
         Event event;
         while (window.pollEvent(event)) {
@@ -228,7 +326,7 @@ void ChessBoard::run() {
                 if (pieceSelected && x == selectedX && y == selectedY) {
                     square.setFillColor(Color(247, 247, 105)); // Yellow highlight
                 } else {
-                    square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(78,120,55));
+                    square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color	(105,146,62)); // green + white board
                 }
                 window.draw(square);
             }
@@ -256,4 +354,3 @@ void ChessBoard::run() {
         window.display();
     }
 }
-

@@ -24,6 +24,12 @@ private:
     Sprite blackSprites[6];
     Sprite whiteSprites[6];
     vector<vector<Sprite>> pieceSprites; // 2D array for piece sprites
+    Texture menuTexture;
+    Sprite menuSprite;
+    Font font;
+
+    bool showMenu();
+    void runGame();
 
 public:
     ChessBoard();
