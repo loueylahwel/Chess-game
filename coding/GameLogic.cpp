@@ -130,17 +130,79 @@ vector<vector<int>> GameLogic::possibleMoves(int x, int y) {
             }
         }
     }
-    else if (abs(piece) == 9) { // King
+    else if (piece == 9) { // White king
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 if (i == 0 && j == 0) continue;
                 int newX = x + i;
                 int newY = y + j;
                 if (newX >= 0 && newX < 8 && newY >= 0 && newY < 8) {
-                    if (board[newX][newY] == 0 || 
-                        (isWhitePiece && isBlack(newX, newY)) || 
-                        (!isWhitePiece && isWhite(newX, newY))) {
-                        moves.push_back({newX, newY});
+                    // Check if square is empty or contains black piece
+                    if (board[newX][newY] <= 0) {
+                        // Check if this square is under attack by black pieces
+                        bool isUnderAttack = false;
+                        
+                        // Check all black pieces to see if they attack this square
+                        for (int checkX = 0; checkX < 8 && !isUnderAttack; checkX++) {
+                            for (int checkY = 0; checkY < 8 && !isUnderAttack; checkY++) {
+                                if (board[checkX][checkY] < 0) { // Black piece
+                                    // Temporarily remove king to avoid blocking checks
+                                    int originalKing = board[x][y];
+                                    board[x][y] = 0;
+                                    
+                                    // Check if this black piece can move to the target square
+                                    if (isValidMove(checkX, checkY, newX, newY)) {
+                                        isUnderAttack = true;
+                                    }
+                                    
+                                    // Restore king
+                                    board[x][y] = originalKing;
+                                }
+                            }
+                        }
+                        
+                        if (!isUnderAttack) {
+                            moves.push_back({newX, newY});
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else if (piece == -9) { // Black king
+        for (int i = -1; i <= 1; ++i) {
+            for (int j = -1; j <= 1; ++j) {
+                if (i == 0 && j == 0) continue;
+                int newX = x + i;
+                int newY = y + j;
+                if (newX >= 0 && newX < 8 && newY >= 0 && newY < 8) {
+                    // Check if square is empty or contains white piece
+                    if (board[newX][newY] >= 0) {
+                        // Check if this square is under attack by white pieces
+                        bool isUnderAttack = false;
+                        
+                        // Check all white pieces to see if they attack this square
+                        for (int checkX = 0; checkX < 8 && !isUnderAttack; checkX++) {
+                            for (int checkY = 0; checkY < 8 && !isUnderAttack; checkY++) {
+                                if (board[checkX][checkY] > 0) { // White piece
+                                    // Temporarily remove king to avoid blocking checks
+                                    int originalKing = board[x][y];
+                                    board[x][y] = 0;
+                                    
+                                    // Check if this white piece can move to the target square
+                                    if (isValidMove(checkX, checkY, newX, newY)) {
+                                        isUnderAttack = true;
+                                    }
+                                    
+                                    // Restore king
+                                    board[x][y] = originalKing;
+                                }
+                            }
+                        }
+                        
+                        if (!isUnderAttack) {
+                            moves.push_back({newX, newY});
+                        }
                     }
                 }
             }
