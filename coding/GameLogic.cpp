@@ -485,61 +485,155 @@ vector<vector<int>> GameLogic::getAllMoves(bool color)
 
 bool GameLogic::check(bool color)
 {
-    // Find the king's position
+    // Cache the king position for performance
+    static int lastKingX[2] = {-1, -1}; // [0] for black, [1] for white
+    static int lastKingY[2] = {-1, -1}; // [0] for black, [1] for white
+
     int kingValue = color ? 9 : -9; // 9 for white king, -9 for black king
     int kingX = -1, kingY = -1;
+    int colorIndex = color ? 1 : 0;
 
-    // Locate the king
-    for (int i = 0; i < 8; i++)
+    // Only search for king if position has changed or not yet found
+    if (lastKingX[colorIndex] == -1 || board[lastKingX[colorIndex]][lastKingY[colorIndex]] != kingValue)
     {
-        for (int j = 0; j < 8; j++)
+        // Locate the king
+        for (int i = 0; i < 8; i++)
         {
-            if (board[i][j] == kingValue)
+            for (int j = 0; j < 8; j++)
             {
-                kingX = i;
-                kingY = j;
-                break;
+                if (board[i][j] == kingValue)
+                {
+                    kingX = i;
+                    kingY = j;
+                    // Cache the position
+                    lastKingX[colorIndex] = kingX;
+                    lastKingY[colorIndex] = kingY;
+                    break;
+                }
             }
+            if (kingX != -1)
+                break;
         }
-        if (kingX != -1)
-            break;
+    }
+    else
+    {
+        // Use cached king position
+        kingX = lastKingX[colorIndex];
+        kingY = lastKingY[colorIndex];
     }
 
     // If king not found (shouldn't happen), return false
     if (kingX == -1 || kingY == -1)
     {
         cout << "ERROR: King not found on board! Color: " << (color ? "White" : "Black") << endl;
-        // Debug: Print the board
-        for (int i = 0; i < 8; i++)
-        {
-            for (int j = 0; j < 8; j++)
-            {
-                cout << board[i][j] << "\t";
-            }
-            cout << endl;
-        }
         return false;
     }
 
-    // Check if any opponent piece can capture the king
-    for (int x = 0; x < 8; x++)
+    // Optimize by only checking pieces that could potentially attack the king
+    // For knights
+    int knightMoves[8][2] = {{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}};
+    for (int i = 0; i < 8; i++)
     {
-        for (int y = 0; y < 8; y++)
+        int checkX = kingX + knightMoves[i][0];
+        int checkY = kingY + knightMoves[i][1];
+        if (checkX >= 0 && checkX < 8 && checkY >= 0 && checkY < 8)
         {
-            // If this is an opponent's piece
-            if ((color && board[x][y] < 0) || (!color && board[x][y] > 0))
-            {
-                // Get raw possible moves without checking for check
-                vector<vector<int>> moves = possibleMoves(x, y);
+            int piece = board[checkX][checkY];
+            // If this is an opponent's knight
+            if ((color && piece == -8) || (!color && piece == 8))
+                return true;
+        }
+    }
 
-                // See if any move can capture the king
-                for (const auto &move : moves)
-                {
-                    if (move[0] == kingX && move[1] == kingY)
-                    {
-                        return true;
-                    }
-                }
+    // For pieces that move in straight lines (rook, queen)
+    int straightDirections[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
+    for (int d = 0; d < 4; d++)
+    {
+        int dirX = straightDirections[d][0];
+        int dirY = straightDirections[d][1];
+        for (int step = 1; step < 8; step++)
+        {
+            int checkX = kingX + dirX * step;
+            int checkY = kingY + dirY * step;
+            if (checkX < 0 || checkX >= 8 || checkY < 0 || checkY >= 8)
+                break; // Off the board
+
+            int piece = board[checkX][checkY];
+            if (piece != 0) // Not empty
+            {
+                if ((color && (piece == -6 || piece == -11)) || // Black rook or queen
+                    (!color && (piece == 6 || piece == 11)))    // White rook or queen
+                    return true;
+                else
+                    break; // Blocked by another piece
+            }
+        }
+    }
+
+    // For pieces that move diagonally (bishop, queen)
+    int diagonalDirections[4][2] = {{1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
+    for (int d = 0; d < 4; d++)
+    {
+        int dirX = diagonalDirections[d][0];
+        int dirY = diagonalDirections[d][1];
+        for (int step = 1; step < 8; step++)
+        {
+            int checkX = kingX + dirX * step;
+            int checkY = kingY + dirY * step;
+            if (checkX < 0 || checkX >= 8 || checkY < 0 || checkY >= 8)
+                break; // Off the board
+
+            int piece = board[checkX][checkY];
+            if (piece != 0) // Not empty
+            {
+                if ((color && (piece == -7 || piece == -11)) || // Black bishop or queen
+                    (!color && (piece == 7 || piece == 11)))    // White bishop or queen
+                    return true;
+                else
+                    break; // Blocked by another piece
+            }
+        }
+    }
+
+    // For pawns (need to check specific squares)
+    if (color) // White king
+    {
+        // Check for black pawns that can capture
+        if (kingY > 0)
+        {
+            if (kingX > 0 && board[kingX - 1][kingY - 1] == -10) // Black pawn capturing diagonally
+                return true;
+            if (kingX < 7 && board[kingX + 1][kingY - 1] == -10) // Black pawn capturing diagonally
+                return true;
+        }
+    }
+    else // Black king
+    {
+        // Check for white pawns that can capture
+        if (kingY < 7)
+        {
+            if (kingX > 0 && board[kingX - 1][kingY + 1] == 10) // White pawn capturing diagonally
+                return true;
+            if (kingX < 7 && board[kingX + 1][kingY + 1] == 10) // White pawn capturing diagonally
+                return true;
+        }
+    }
+
+    // Check for opponent king (in case of adjacent kings)
+    int enemyKingValue = color ? -9 : 9;
+    for (int dx = -1; dx <= 1; dx++)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            if (dx == 0 && dy == 0)
+                continue;
+
+            int checkX = kingX + dx;
+            int checkY = kingY + dy;
+            if (checkX >= 0 && checkX < 8 && checkY >= 0 && checkY < 8)
+            {
+                if (board[checkX][checkY] == enemyKingValue)
+                    return true;
             }
         }
     }

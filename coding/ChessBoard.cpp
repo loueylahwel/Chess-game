@@ -257,45 +257,62 @@ bool ChessBoard::showMenu()
 
 bool ChessBoard::showGameOverWindow(bool whiteWinner)
 {
-    // Semi-transparent overlay
-    RectangleShape overlay(Vector2f(WINDOW_WIDTH, WINDOW_HEIGHT));
+    // Get current view to match scaling
+    View currentView = window.getView();
+
+    // Semi-transparent overlay using current view dimensions
+    RectangleShape overlay(Vector2f(currentView.getSize().x, currentView.getSize().y));
+    overlay.setPosition(currentView.getCenter() - currentView.getSize() / 2.f);
     overlay.setFillColor(Color(0, 0, 0, 180)); // Semi-transparent black
 
-    // Game over panel
-    RectangleShape panel(Vector2f(400, 300));
-    panel.setPosition(WINDOW_WIDTH / 2 - 200, WINDOW_HEIGHT / 2 - 150);
+    // Game over panel - scaled to match viewport
+    float panelWidth = currentView.getSize().x * 0.5f;
+    float panelHeight = currentView.getSize().y * 0.4f;
+    RectangleShape panel(Vector2f(panelWidth, panelHeight));
+    panel.setPosition(
+        currentView.getCenter().x - panelWidth / 2,
+        currentView.getCenter().y - panelHeight / 2);
     panel.setFillColor(Color(50, 50, 50, 250));
+
+    // Scale fonts based on view size
+    float fontScaleFactor = std::min(currentView.getSize().x, currentView.getSize().y) / 773.0f;
 
     // Winner text
     Text winnerText;
     winnerText.setFont(font);
     winnerText.setString(whiteWinner ? "White Wins!" : "Black Wins!");
-    winnerText.setCharacterSize(40);
+    winnerText.setCharacterSize(static_cast<unsigned int>(40 * fontScaleFactor));
     winnerText.setFillColor(Color::White);
     winnerText.setPosition(
-        WINDOW_WIDTH / 2 - winnerText.getLocalBounds().width / 2,
-        WINDOW_HEIGHT / 2 - 120);
+        currentView.getCenter().x - winnerText.getLocalBounds().width / 2,
+        panel.getPosition().y + panelHeight * 0.1f);
 
     // Analysis button
-    RectangleShape analysisButton(Vector2f(300, 60));
-    analysisButton.setPosition(WINDOW_WIDTH / 2 - 150, WINDOW_HEIGHT / 2 - 40);
+    float buttonWidth = panelWidth * 0.75f;
+    float buttonHeight = panelHeight * 0.2f;
+    RectangleShape analysisButton(Vector2f(buttonWidth, buttonHeight));
+    analysisButton.setPosition(
+        currentView.getCenter().x - buttonWidth / 2,
+        panel.getPosition().y + panelHeight * 0.4f);
     analysisButton.setFillColor(Color(70, 70, 70, 220));
 
-    Text analysisText("Proceed to Analysis", font, 25);
+    Text analysisText("Proceed to Analysis", font, static_cast<unsigned int>(25 * fontScaleFactor));
     analysisText.setPosition(
-        WINDOW_WIDTH / 2 - analysisText.getLocalBounds().width / 2,
-        WINDOW_HEIGHT / 2 - 30);
+        currentView.getCenter().x - analysisText.getLocalBounds().width / 2,
+        analysisButton.getPosition().y + (buttonHeight - analysisText.getLocalBounds().height) / 2 - 5);
     analysisText.setFillColor(Color::White);
 
     // New game button
-    RectangleShape newGameButton(Vector2f(300, 60));
-    newGameButton.setPosition(WINDOW_WIDTH / 2 - 150, WINDOW_HEIGHT / 2 + 40);
+    RectangleShape newGameButton(Vector2f(buttonWidth, buttonHeight));
+    newGameButton.setPosition(
+        currentView.getCenter().x - buttonWidth / 2,
+        panel.getPosition().y + panelHeight * 0.7f);
     newGameButton.setFillColor(Color(70, 70, 70, 220));
 
-    Text newGameText("Play Another Game", font, 25);
+    Text newGameText("Play Another Game", font, static_cast<unsigned int>(25 * fontScaleFactor));
     newGameText.setPosition(
-        WINDOW_WIDTH / 2 - newGameText.getLocalBounds().width / 2,
-        WINDOW_HEIGHT / 2 + 50);
+        currentView.getCenter().x - newGameText.getLocalBounds().width / 2,
+        newGameButton.getPosition().y + (buttonHeight - newGameText.getLocalBounds().height) / 2 - 5);
     newGameText.setFillColor(Color::White);
 
     while (window.isOpen())
@@ -311,17 +328,18 @@ bool ChessBoard::showGameOverWindow(bool whiteWinner)
 
             if (event.type == Event::MouseButtonPressed)
             {
-                Vector2i mousePos = Mouse::getPosition(window);
+                // Convert screen coordinates to world coordinates
+                Vector2f mouseWorldPos = window.mapPixelToCoords(Vector2i(event.mouseButton.x, event.mouseButton.y));
 
                 // Check if analysis button was clicked
-                if (analysisButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                if (analysisButton.getGlobalBounds().contains(mouseWorldPos))
                 {
                     // TODO: Implement analysis functionality
                     return false; // For now, just close the window
                 }
 
                 // Check if new game button was clicked
-                if (newGameButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                if (newGameButton.getGlobalBounds().contains(mouseWorldPos))
                 {
                     // Reset the game
                     initBoard();
@@ -330,11 +348,61 @@ bool ChessBoard::showGameOverWindow(bool whiteWinner)
                     return true;
                 }
             }
+
+            // Handle window resize
+            if (event.type == Event::Resized)
+            {
+                // Update the view
+                updateBoardAndPieceSizes();
+                currentView = window.getView();
+
+                // Update all UI elements based on new view
+                overlay.setSize(Vector2f(currentView.getSize().x, currentView.getSize().y));
+                overlay.setPosition(currentView.getCenter() - currentView.getSize() / 2.f);
+
+                panelWidth = currentView.getSize().x * 0.5f;
+                panelHeight = currentView.getSize().y * 0.4f;
+                panel.setSize(Vector2f(panelWidth, panelHeight));
+                panel.setPosition(
+                    currentView.getCenter().x - panelWidth / 2,
+                    currentView.getCenter().y - panelHeight / 2);
+
+                fontScaleFactor = std::min(currentView.getSize().x, currentView.getSize().y) / 773.0f;
+
+                winnerText.setCharacterSize(static_cast<unsigned int>(40 * fontScaleFactor));
+                winnerText.setPosition(
+                    currentView.getCenter().x - winnerText.getLocalBounds().width / 2,
+                    panel.getPosition().y + panelHeight * 0.1f);
+
+                buttonWidth = panelWidth * 0.75f;
+                buttonHeight = panelHeight * 0.2f;
+
+                analysisButton.setSize(Vector2f(buttonWidth, buttonHeight));
+                analysisButton.setPosition(
+                    currentView.getCenter().x - buttonWidth / 2,
+                    panel.getPosition().y + panelHeight * 0.4f);
+
+                analysisText.setCharacterSize(static_cast<unsigned int>(25 * fontScaleFactor));
+                analysisText.setPosition(
+                    currentView.getCenter().x - analysisText.getLocalBounds().width / 2,
+                    analysisButton.getPosition().y + (buttonHeight - analysisText.getLocalBounds().height) / 2 - 5);
+
+                newGameButton.setSize(Vector2f(buttonWidth, buttonHeight));
+                newGameButton.setPosition(
+                    currentView.getCenter().x - buttonWidth / 2,
+                    panel.getPosition().y + panelHeight * 0.7f);
+
+                newGameText.setCharacterSize(static_cast<unsigned int>(25 * fontScaleFactor));
+                newGameText.setPosition(
+                    currentView.getCenter().x - newGameText.getLocalBounds().width / 2,
+                    newGameButton.getPosition().y + (buttonHeight - newGameText.getLocalBounds().height) / 2 - 5);
+            }
         }
 
         // Highlight buttons on hover
-        Vector2i mousePos = Mouse::getPosition(window);
-        if (analysisButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+        Vector2f mousePos = window.mapPixelToCoords(Mouse::getPosition(window));
+
+        if (analysisButton.getGlobalBounds().contains(mousePos))
         {
             analysisButton.setFillColor(Color(100, 100, 100, 220));
         }
@@ -343,7 +411,7 @@ bool ChessBoard::showGameOverWindow(bool whiteWinner)
             analysisButton.setFillColor(Color(70, 70, 70, 220));
         }
 
-        if (newGameButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+        if (newGameButton.getGlobalBounds().contains(mousePos))
         {
             newGameButton.setFillColor(Color(100, 100, 100, 220));
         }
