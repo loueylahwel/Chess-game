@@ -7,23 +7,31 @@
 
 using namespace std;
 
-class GameLogic {
+class GameLogic
+{
 private:
-    vector<vector<int>>& board;
-    ChessBoard& chessBoard;
+    vector<vector<int>> &board;
+    ChessBoard &chessBoard;
+    int enPassantCol;       // Column of pawn that just moved two squares
+    int enPassantRow;       // Row where the capturing pawn would end up
+    bool enPassantPossible; // Flag indicating if en passant is possible this turn
 
 public:
-    GameLogic(vector<vector<int>>& boardRef, ChessBoard& chessBoardRef);
-    bool isWhite(int x,int y) const;
-    bool isBlack(int x,int y) const;
-    string whatPiece(int x,int y);
-    vector <vector<int>> possibleMoves(int x,int y);
-    vector <vector<int>> getAllMoves(bool color);
+    GameLogic(vector<vector<int>> &boardRef, ChessBoard &chessBoardRef);
+    bool isWhite(int x, int y) const;
+    bool isBlack(int x, int y) const;
+    string whatPiece(int x, int y);
+    vector<vector<int>> possibleMoves(int x, int y);
+    vector<vector<int>> getAllMoves(bool color);
     void movePiece(int x, int y, int xx, int yy);
     bool check(bool color);
     bool checkMate(bool color);
     bool checkStaleMate(bool color);
     bool isValidMove(int x, int y, int xx, int yy);
+    bool wouldBeInCheck(int fromX, int fromY, int toX, int toY, bool color);
+    bool moveWouldCheck(int fromX, int fromY, int toX, int toY, bool color);
+    void resetEnPassant();
+    bool isEnPassantCapture(int fromX, int fromY, int toX, int toY) const;
 };
 
-#endif 
+#endif

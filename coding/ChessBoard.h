@@ -12,10 +12,10 @@ const int WINDOW_WIDTH = 773;
 const int WINDOW_HEIGHT = 773;
 const float SCALE_FACTOR = 0.75;
 const int BOARD_SIZE = 8;
-const float SQUARE_SIZE = WINDOW_WIDTH / static_cast<float>(BOARD_SIZE);
 const float PIECE_SCALE = 0.9f;
 
-class ChessBoard {
+class ChessBoard
+{
 private:
     RenderWindow window;
     vector<vector<int>> board;
@@ -27,14 +27,19 @@ private:
     Texture menuTexture;
     Sprite menuSprite;
     Font font;
+    float SQUARE_SIZE; // Make SQUARE_SIZE a member variable
+    bool gameOver;     // Flag to indicate if game is over
+    bool whiteWon;     // Flag to indicate if white won
 
     bool showMenu();
+    bool showGameOverWindow(bool whiteWinner); // Method to show game over window
     void runGame();
+    void updateBoardAndPieceSizes(); // Declaration for the new function
 
 public:
     ChessBoard();
-    vector<vector<Sprite>>& getPieceSprites() { return pieceSprites; }
-    vector<vector<int>>& getMatrix();
+    vector<vector<Sprite>> &getPieceSprites() { return pieceSprites; }
+    vector<vector<int>> &getMatrix();
     void setPiece(int x, int y, int value);
     void initBoard();
     int getPiece(int x, int y) const;
