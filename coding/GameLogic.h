@@ -12,12 +12,15 @@ class GameLogic
 private:
     vector<vector<int>> &board;
     ChessBoard &chessBoard;
-    int enPassantCol;       // Column of pawn that just moved two squares
-    int enPassantRow;       // Row where the capturing pawn would end up
-    bool enPassantPossible; // Flag indicating if en passant is possible this turn
+    int enPassantCol;        // Column of pawn that just moved two squares
+    int enPassantRow;        // Row where the capturing pawn would end up
+    bool enPassantPossible;  // Flag indicating if en passant is possible this turn
+    static int lastKingX[2]; // Cached king X positions [0] for black, [1] for white
+    static int lastKingY[2]; // Cached king Y positions [0] for black, [1] for white
 
 public:
     GameLogic(vector<vector<int>> &boardRef, ChessBoard &chessBoardRef);
+    void reset(); // Reset all game logic state
     bool isWhite(int x, int y) const;
     bool isBlack(int x, int y) const;
     string whatPiece(int x, int y);

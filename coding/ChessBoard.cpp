@@ -68,15 +68,51 @@ bool ChessBoard::loadTexture()
 
 void ChessBoard::initBoard()
 {
-    board = {
-        {-6, -10, 0, 0, 0, 0, 10, 6},
-        {-8, -10, 0, 0, 0, 0, 10, 8},
-        {-7, -10, 0, 0, 0, 0, 10, 7},
-        {-11, -10, 0, 0, 0, 0, 10, 11},
-        {-9, -10, 0, 0, 0, 0, 10, 9},
-        {-7, -10, 0, 0, 0, 0, 10, 7},
-        {-8, -10, 0, 0, 0, 0, 10, 8},
-        {-6, -10, 0, 0, 0, 0, 10, 6}};
+    // Chess pieces are represented with numbers:
+    // Positive for white, negative for black
+    // 6: Rook, 7: Bishop, 8: Knight, 9: King, 10: Pawn, 11: Queen
+
+    // Clear the board first
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            board[i][j] = 0;
+        }
+    }
+
+    // Set up proper chess board
+    // First row (black pieces)
+    board[0][0] = -6;  // Black rook
+    board[1][0] = -8;  // Black knight
+    board[2][0] = -7;  // Black bishop
+    board[3][0] = -11; // Black queen
+    board[4][0] = -9;  // Black king
+    board[5][0] = -7;  // Black bishop
+    board[6][0] = -8;  // Black knight
+    board[7][0] = -6;  // Black rook
+
+    // Second row (black pawns)
+    for (int i = 0; i < 8; i++)
+    {
+        board[i][1] = -10; // Black pawns
+    }
+
+    // Seventh row (white pawns)
+    for (int i = 0; i < 8; i++)
+    {
+        board[i][6] = 10; // White pawns
+    }
+
+    // Eighth row (white pieces)
+    board[0][7] = 6;  // White rook
+    board[1][7] = 8;  // White knight
+    board[2][7] = 7;  // White bishop
+    board[3][7] = 11; // White queen
+    board[4][7] = 9;  // White king
+    board[5][7] = 7;  // White bishop
+    board[6][7] = 8;  // White knight
+    board[7][7] = 6;  // White rook
 }
 
 void ChessBoard::initializePieces()
@@ -84,32 +120,55 @@ void ChessBoard::initializePieces()
     // Initialize the 2D array (8x8) with empty sprites first
     pieceSprites.resize(BOARD_SIZE, vector<Sprite>(BOARD_SIZE));
 
-    // Set up black pawns
-    for (int i = 0; i < 8; ++i)
+    // Clear all sprites
+    for (int x = 0; x < BOARD_SIZE; x++)
     {
-        pieceSprites[i][1] = blackSprites[0]; // Pawn
-    }
-
-    // Set up white pawns
-    for (int i = 0; i < 8; ++i)
-    {
-        pieceSprites[i][6] = whiteSprites[0]; // Pawn
-    }
-
-    // Set up other pieces
-    int pieceIndices[] = {1, 2, 3, 4, 5};                    // Rook, Knight, Bishop, Queen, King
-    int pieceCols[][2] = {{0, 7}, {1, 6}, {2, 5}, {3}, {4}}; // Positions
-
-    for (int i = 0; i < 5; ++i)
-    {
-        int spriteIndex = pieceIndices[i];
-        for (int j = 0; j < (i < 3 ? 2 : 1); ++j)
+        for (int y = 0; y < BOARD_SIZE; y++)
         {
-            int col = pieceCols[i][j];
-            // Black pieces (back row)
-            pieceSprites[col][0] = blackSprites[spriteIndex];
-            // White pieces (front row)
-            pieceSprites[col][7] = whiteSprites[spriteIndex];
+            pieceSprites[x][y] = Sprite(); // Empty sprite
+        }
+    }
+
+    // Initialize pieces based on board values
+    for (int x = 0; x < BOARD_SIZE; x++)
+    {
+        for (int y = 0; y < BOARD_SIZE; y++)
+        {
+            int pieceValue = board[x][y];
+            if (pieceValue != 0)
+            {
+                bool isWhite = pieceValue > 0;
+                int absValue = abs(pieceValue);
+                int spriteIndex = -1;
+
+                // Map piece value to sprite index
+                switch (absValue)
+                {
+                case 10:
+                    spriteIndex = 0;
+                    break; // Pawn
+                case 6:
+                    spriteIndex = 1;
+                    break; // Rook
+                case 8:
+                    spriteIndex = 2;
+                    break; // Knight
+                case 7:
+                    spriteIndex = 3;
+                    break; // Bishop
+                case 11:
+                    spriteIndex = 4;
+                    break; // Queen
+                case 9:
+                    spriteIndex = 5;
+                    break; // King
+                }
+
+                if (spriteIndex != -1)
+                {
+                    pieceSprites[x][y] = isWhite ? whiteSprites[spriteIndex] : blackSprites[spriteIndex];
+                }
+            }
         }
     }
 }
@@ -341,9 +400,10 @@ bool ChessBoard::showGameOverWindow(bool whiteWinner)
                 // Check if new game button was clicked
                 if (newGameButton.getGlobalBounds().contains(mouseWorldPos))
                 {
-                    // Reset the game
-                    initBoard();
-                    initializePieces();
+                    // Reset the game completely
+                    initBoard();                // Reset board array to starting position
+                    initializePieces();         // Reset all piece sprites
+                    updateBoardAndPieceSizes(); // Ensure pieces are properly scaled
                     gameOver = false;
                     return true;
                 }
@@ -504,9 +564,23 @@ void ChessBoard::runGame()
                     pieceSelected = false;
                     selectedX = -1;
                     selectedY = -1;
-                    whiteTurn = true;
+                    whiteTurn = true; // Always start with white
                     validMoves.clear();
                     gameOver = false;
+
+                    // Debug: Print the board state
+                    cout << "Board state after reset:" << endl;
+                    for (int y = 0; y < 8; y++)
+                    {
+                        for (int x = 0; x < 8; x++)
+                        {
+                            cout << board[x][y] << "\t";
+                        }
+                        cout << endl;
+                    }
+
+                    // Reset game logic
+                    logic.reset();
                     continue;
                 }
                 else
@@ -651,9 +725,23 @@ void ChessBoard::runGame()
                                     pieceSelected = false;
                                     selectedX = -1;
                                     selectedY = -1;
-                                    whiteTurn = true;
+                                    whiteTurn = true; // Always start with white
                                     validMoves.clear();
                                     gameOver = false;
+
+                                    // Debug: Print the board state
+                                    cout << "Board state after reset:" << endl;
+                                    for (int y = 0; y < 8; y++)
+                                    {
+                                        for (int x = 0; x < 8; x++)
+                                        {
+                                            cout << board[x][y] << "\t";
+                                        }
+                                        cout << endl;
+                                    }
+
+                                    // Reset game logic
+                                    logic.reset();
                                 }
                                 else
                                 {

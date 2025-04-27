@@ -6,9 +6,31 @@
 
 using namespace std;
 
+// Initialize static members
+int GameLogic::lastKingX[2] = {-1, -1}; // [0] for black, [1] for white
+int GameLogic::lastKingY[2] = {-1, -1}; // [0] for black, [1] for white
+
 GameLogic::GameLogic(vector<vector<int>> &boardRef, ChessBoard &chessBoardRef)
     : board(boardRef), chessBoard(chessBoardRef),
-      enPassantCol(-1), enPassantRow(-1), enPassantPossible(false) {}
+      enPassantCol(-1), enPassantRow(-1), enPassantPossible(false)
+{
+    reset();
+}
+
+void GameLogic::reset()
+{
+    // Reset en passant state
+    enPassantCol = -1;
+    enPassantRow = -1;
+    enPassantPossible = false;
+
+    // Reset cached king positions
+    for (int i = 0; i < 2; i++)
+    {
+        lastKingX[i] = -1;
+        lastKingY[i] = -1;
+    }
+}
 
 bool GameLogic::isWhite(int x, int y) const
 {
