@@ -18,6 +18,19 @@ private:
     static int lastKingX[2]; // Cached king X positions [0] for black, [1] for white
     static int lastKingY[2]; // Cached king Y positions [0] for black, [1] for white
 
+    // Track piece movement for castling
+    bool whiteKingMoved;          // Has white king moved?
+    bool blackKingMoved;          // Has black king moved?
+    bool whiteQueensideRookMoved; // Has white queenside rook moved?
+    bool whiteKingsideRookMoved;  // Has white kingside rook moved?
+    bool blackQueensideRookMoved; // Has black queenside rook moved?
+    bool blackKingsideRookMoved;  // Has black kingside rook moved?
+
+    // Helper methods for castling
+    bool canCastle(bool isWhite, bool isKingside) const;
+    bool squaresAreEmpty(int startX, int endX, int y) const;
+    bool squaresAreNotAttacked(int startX, int endX, int y, bool color) const;
+
 public:
     GameLogic(vector<vector<int>> &boardRef, ChessBoard &chessBoardRef);
     void reset(); // Reset all game logic state
@@ -35,6 +48,7 @@ public:
     bool moveWouldCheck(int fromX, int fromY, int toX, int toY, bool color);
     void resetEnPassant();
     bool isEnPassantCapture(int fromX, int fromY, int toX, int toY) const;
+    bool isCastlingMove(int fromX, int fromY, int toX, int toY) const;
 };
 
 #endif

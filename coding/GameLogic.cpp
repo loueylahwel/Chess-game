@@ -12,7 +12,10 @@ int GameLogic::lastKingY[2] = {-1, -1}; // [0] for black, [1] for white
 
 GameLogic::GameLogic(vector<vector<int>> &boardRef, ChessBoard &chessBoardRef)
     : board(boardRef), chessBoard(chessBoardRef),
-      enPassantCol(-1), enPassantRow(-1), enPassantPossible(false)
+      enPassantCol(-1), enPassantRow(-1), enPassantPossible(false),
+      whiteKingMoved(false), blackKingMoved(false),
+      whiteQueensideRookMoved(false), whiteKingsideRookMoved(false),
+      blackQueensideRookMoved(false), blackKingsideRookMoved(false)
 {
     reset();
 }
@@ -30,6 +33,14 @@ void GameLogic::reset()
         lastKingX[i] = -1;
         lastKingY[i] = -1;
     }
+
+    // Reset castling state
+    whiteKingMoved = false;
+    blackKingMoved = false;
+    whiteQueensideRookMoved = false;
+    whiteKingsideRookMoved = false;
+    blackQueensideRookMoved = false;
+    blackKingsideRookMoved = false;
 }
 
 bool GameLogic::isWhite(int x, int y) const
@@ -286,6 +297,22 @@ vector<vector<int>> GameLogic::possibleMoves(int x, int y)
                 }
             }
         }
+
+        // Check for castling possibilities
+        if (x == 4 && y == 7) // White king in initial position
+        {
+            // Check kingside castling
+            if (canCastle(true, true))
+            {
+                moves.push_back({6, 7}); // King's target position for kingside castling
+            }
+
+            // Check queenside castling
+            if (canCastle(true, false))
+            {
+                moves.push_back({2, 7}); // King's target position for queenside castling
+            }
+        }
     }
     else if (piece == -9)
     { // Black king
@@ -334,6 +361,22 @@ vector<vector<int>> GameLogic::possibleMoves(int x, int y)
                         }
                     }
                 }
+            }
+        }
+
+        // Check for castling possibilities
+        if (x == 4 && y == 0) // Black king in initial position
+        {
+            // Check kingside castling
+            if (canCastle(false, true))
+            {
+                moves.push_back({6, 0}); // King's target position for kingside castling
+            }
+
+            // Check queenside castling
+            if (canCastle(false, false))
+            {
+                moves.push_back({2, 0}); // King's target position for queenside castling
             }
         }
     }
@@ -416,6 +459,35 @@ void GameLogic::movePiece(int x, int y, int xx, int yy)
     // Reset en passant flag
     bool wasEnPassant = isEnPassantCapture(x, y, xx, yy);
 
+    // Check if this is a castling move
+    bool castlingMove = isCastlingMove(x, y, xx, yy);
+
+    // Track king and rook movement for castling
+    if (abs(board[x][y]) == 9) // King
+    {
+        if (isWhitePiece)
+            whiteKingMoved = true;
+        else
+            blackKingMoved = true;
+    }
+    else if (abs(board[x][y]) == 6) // Rook
+    {
+        if (isWhitePiece)
+        {
+            if (x == 0 && y == 7) // White queenside rook
+                whiteQueensideRookMoved = true;
+            else if (x == 7 && y == 7) // White kingside rook
+                whiteKingsideRookMoved = true;
+        }
+        else
+        {
+            if (x == 0 && y == 0) // Black queenside rook
+                blackQueensideRookMoved = true;
+            else if (x == 7 && y == 0) // Black kingside rook
+                blackKingsideRookMoved = true;
+        }
+    }
+
     // Check if this move enables en passant
     bool enPassantMove = false;
     if (abs(board[x][y]) == 10) // Pawn
@@ -445,7 +517,7 @@ void GameLogic::movePiece(int x, int y, int xx, int yy)
 
     // Play move sound
     static sf::SoundBuffer buffer;
-    static sf::Sound sound; // Corrected: sf::Sound instead of sf::sound
+    static sf::Sound sound;
 
     if (putsInCheck)
         buffer.loadFromFile("coding/sounds/move-check.wav");
@@ -473,6 +545,35 @@ void GameLogic::movePiece(int x, int y, int xx, int yy)
             board[xx][yy - 1] = 0;
             chessBoard.getPieceSprites()[xx][yy - 1] = Sprite();
         }
+    }
+
+    // Handle castling (move the rook)
+    if (castlingMove)
+    {
+        int rookFromX, rookToX;
+        int rookY = isWhitePiece ? 7 : 0;
+
+        // Kingside castling
+        if (xx > x)
+        {
+            rookFromX = 7;
+            rookToX = 5;
+        }
+        // Queenside castling
+        else
+        {
+            rookFromX = 0;
+            rookToX = 3;
+        }
+
+        // Move the rook
+        board[rookToX][rookY] = board[rookFromX][rookY];
+        board[rookFromX][rookY] = 0;
+
+        // Update the rook sprite
+        auto &pieceSprites = chessBoard.getPieceSprites();
+        pieceSprites[rookToX][rookY] = pieceSprites[rookFromX][rookY];
+        pieceSprites[rookFromX][rookY] = Sprite();
     }
 
     // Move the piece on the board
@@ -851,4 +952,144 @@ bool GameLogic::isEnPassantCapture(int fromX, int fromY, int toX, int toY) const
         return true;
 
     return false;
+}
+
+// Helper method to check if all squares between start and end are empty
+bool GameLogic::squaresAreEmpty(int startX, int endX, int y) const
+{
+    // Ensure startX < endX for simpler logic
+    if (startX > endX)
+    {
+        int temp = startX;
+        startX = endX;
+        endX = temp;
+    }
+
+    // Check each square from startX+1 to endX-1
+    for (int x = startX + 1; x < endX; x++)
+    {
+        if (board[x][y] != 0)
+        {
+            return false; // Square is not empty
+        }
+    }
+
+    return true;
+}
+
+// Helper method to check if squares are not under attack
+bool GameLogic::squaresAreNotAttacked(int startX, int endX, int y, bool color) const
+{
+    // Ensure startX <= endX for simpler logic
+    if (startX > endX)
+    {
+        int temp = startX;
+        startX = endX;
+        endX = temp;
+    }
+
+    // Check each square from startX to endX
+    for (int x = startX; x <= endX; x++)
+    {
+        // Need a non-const copy of the board to modify it
+        vector<vector<int>> tempBoard = board;
+        tempBoard[x][y] = color ? 9 : -9; // White or black king
+
+        // Create a temporary GameLogic instance to use non-const check method
+        GameLogic tempLogic(tempBoard, const_cast<ChessBoard &>(chessBoard));
+        if (tempLogic.check(color))
+        {
+            return false; // Square is under attack
+        }
+    }
+
+    return true;
+}
+
+// Method to check if castling is possible
+bool GameLogic::canCastle(bool isWhite, bool isKingside) const
+{
+    // Check if king has moved
+    if (isWhite && whiteKingMoved)
+        return false;
+    if (!isWhite && blackKingMoved)
+        return false;
+
+    // Check if rook has moved
+    if (isWhite)
+    {
+        if (isKingside && whiteKingsideRookMoved)
+            return false;
+        if (!isKingside && whiteQueensideRookMoved)
+            return false;
+    }
+    else
+    {
+        if (isKingside && blackKingsideRookMoved)
+            return false;
+        if (!isKingside && blackQueensideRookMoved)
+            return false;
+    }
+
+    // Create a temporary GameLogic instance to use non-const check method
+    GameLogic tempLogic(const_cast<vector<vector<int>> &>(board), const_cast<ChessBoard &>(chessBoard));
+
+    // Check if king is in check
+    if (tempLogic.check(isWhite))
+        return false;
+
+    int kingRow = isWhite ? 7 : 0;
+    int kingCol = 4;
+
+    // Check for kingside castling
+    if (isKingside)
+    {
+        // Check if squares between king and rook are empty
+        if (!squaresAreEmpty(kingCol, 7, kingRow))
+            return false;
+
+        // Check if squares the king passes through are not under attack
+        if (!squaresAreNotAttacked(kingCol, kingCol + 2, kingRow, isWhite))
+            return false;
+
+        // Check if rook is present at the correct position
+        int rookPiece = isWhite ? 6 : -6; // White or black rook
+        if (board[7][kingRow] != rookPiece)
+            return false;
+    }
+    // Check for queenside castling
+    else
+    {
+        // Check if squares between king and rook are empty
+        if (!squaresAreEmpty(0, kingCol, kingRow))
+            return false;
+
+        // Check if squares the king passes through are not under attack
+        if (!squaresAreNotAttacked(kingCol - 2, kingCol, kingRow, isWhite))
+            return false;
+
+        // Check if rook is present at the correct position
+        int rookPiece = isWhite ? 6 : -6; // White or black rook
+        if (board[0][kingRow] != rookPiece)
+            return false;
+    }
+
+    return true;
+}
+
+// Method to check if a move is a castling move
+bool GameLogic::isCastlingMove(int fromX, int fromY, int toX, int toY) const
+{
+    // Check if this is a king
+    int piece = board[fromX][fromY];
+
+    if (abs(piece) != 9) // Not a king
+        return false;
+
+    // Check if king moves by 2 squares horizontally
+    if (fromY != toY || abs(fromX - toX) != 2)
+        return false;
+
+    // It's a castling move
+    return true;
 }

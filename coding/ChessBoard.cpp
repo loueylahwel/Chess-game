@@ -7,10 +7,28 @@
 using namespace std;
 using namespace sf;
 
+// Define the global variables here (declared as extern in ChessBoard.h)
+int WINDOW_WIDTH = 700;  // Reduced from 773
+int WINDOW_HEIGHT = 700; // Reduced from 773
+float SCALE_FACTOR = 0.75;
+int BOARD_SIZE = 8;
+float PIECE_SCALE = 0.9f;
+
 ChessBoard::ChessBoard() : window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "ChessGame"),
                            board(BOARD_SIZE, vector<int>(BOARD_SIZE, 0)),
                            gameOver(false),
-                           whiteWon(false)
+                           whiteWon(false),
+                           whiteTurn(true),
+                           currentMode(GameMode::TwoPlayer),
+                           playerIsWhite(true),
+                           computerDifficulty(ComputerDifficulty::Medium),
+                           engine(nullptr),
+                           currentPosition(""),
+                           network(nullptr),
+                           serverPort(50000),
+                           waitingForOpponent(false),
+                           opponentConnected(false),
+                           waitingForMove(false)
 {
     // Initialize SQUARE_SIZE based on initial window dimensions
     SQUARE_SIZE = WINDOW_WIDTH / static_cast<float>(BOARD_SIZE);
@@ -224,6 +242,27 @@ void ChessBoard::run()
         return;
     }
 
+    // Initialize Stockfish if needed
+    if (currentMode == GameMode::VsComputer)
+    {
+        engine = make_unique<StockfishEngine>();
+        if (!engine->initialize())
+        {
+            cout << "Failed to initialize Stockfish engine. Reverting to two-player mode." << endl;
+            currentMode = GameMode::TwoPlayer;
+        }
+        else
+        {
+            engine->setDifficulty(static_cast<int>(computerDifficulty));
+            moveHistory.clear();
+            currentPosition = "";
+        }
+    }
+    // For LAN games, network initialization is handled in showNetworkOptions
+
+    // Initialize the game
+    resetGame();
+
     // If user selected start, run the game
     runGame();
 }
@@ -240,21 +279,57 @@ bool ChessBoard::showMenu()
     {
         window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
     }
-    // Create start and exit buttons
-    RectangleShape startButton(Vector2f(200, 60));
-    startButton.setPosition(WINDOW_WIDTH / 2 - 100, WINDOW_HEIGHT / 2 - 40);
-    startButton.setFillColor(Color(50, 50, 50, 200));
 
-    RectangleShape exitButton(Vector2f(200, 60));
-    exitButton.setPosition(WINDOW_WIDTH / 2 - 100, WINDOW_HEIGHT / 2 + 60);
+    // Create buttons
+    float buttonHeight = 60;
+    float buttonSpacing = 20;
+    float totalHeight = 4 * buttonHeight + 3 * buttonSpacing;
+    float startY = WINDOW_HEIGHT / 2 - totalHeight / 2;
+
+    RectangleShape twoPlayerButton(Vector2f(300, buttonHeight));
+    twoPlayerButton.setPosition(WINDOW_WIDTH / 2 - 150, startY);
+    twoPlayerButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape vsComputerButton(Vector2f(300, buttonHeight));
+    vsComputerButton.setPosition(WINDOW_WIDTH / 2 - 150, startY + buttonHeight + buttonSpacing);
+    vsComputerButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape hostLANButton(Vector2f(300, buttonHeight));
+    hostLANButton.setPosition(WINDOW_WIDTH / 2 - 150, startY + 2 * (buttonHeight + buttonSpacing));
+    hostLANButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape joinLANButton(Vector2f(300, buttonHeight));
+    joinLANButton.setPosition(WINDOW_WIDTH / 2 - 150, startY + 3 * (buttonHeight + buttonSpacing));
+    joinLANButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape exitButton(Vector2f(300, buttonHeight));
+    exitButton.setPosition(WINDOW_WIDTH / 2 - 150, startY + 4 * (buttonHeight + buttonSpacing));
     exitButton.setFillColor(Color(50, 50, 50, 200));
 
-    Text startText("Start Game", font, 30);
-    startText.setPosition(WINDOW_WIDTH / 2 - 80, WINDOW_HEIGHT / 2 - 30);
-    startText.setFillColor(Color::White);
+    float fontSize = 30;
+    Text twoPlayerText("Play Two-Player", font, fontSize);
+    twoPlayerText.setPosition(WINDOW_WIDTH / 2 - twoPlayerText.getLocalBounds().width / 2,
+                              twoPlayerButton.getPosition().y + (buttonHeight - twoPlayerText.getLocalBounds().height) / 2);
+    twoPlayerText.setFillColor(Color::White);
 
-    Text exitText("Exit Game", font, 30);
-    exitText.setPosition(WINDOW_WIDTH / 2 - 75, WINDOW_HEIGHT / 2 + 70);
+    Text vsComputerText("Play vs Computer", font, fontSize);
+    vsComputerText.setPosition(WINDOW_WIDTH / 2 - vsComputerText.getLocalBounds().width / 2,
+                               vsComputerButton.getPosition().y + (buttonHeight - vsComputerText.getLocalBounds().height) / 2);
+    vsComputerText.setFillColor(Color::White);
+
+    Text hostLANText("Host LAN Game", font, fontSize);
+    hostLANText.setPosition(WINDOW_WIDTH / 2 - hostLANText.getLocalBounds().width / 2,
+                            hostLANButton.getPosition().y + (buttonHeight - hostLANText.getLocalBounds().height) / 2);
+    hostLANText.setFillColor(Color::White);
+
+    Text joinLANText("Join LAN Game", font, fontSize);
+    joinLANText.setPosition(WINDOW_WIDTH / 2 - joinLANText.getLocalBounds().width / 2,
+                            joinLANButton.getPosition().y + (buttonHeight - joinLANText.getLocalBounds().height) / 2);
+    joinLANText.setFillColor(Color::White);
+
+    Text exitText("Exit Game", font, fontSize);
+    exitText.setPosition(WINDOW_WIDTH / 2 - exitText.getLocalBounds().width / 2,
+                         exitButton.getPosition().y + (buttonHeight - exitText.getLocalBounds().height) / 2);
     exitText.setFillColor(Color::White);
 
     while (window.isOpen())
@@ -271,9 +346,39 @@ bool ChessBoard::showMenu()
             if (event.type == Event::MouseButtonPressed)
             {
                 Vector2i mousePos = Mouse::getPosition(window);
-                if (startButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                if (twoPlayerButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
                 {
+                    currentMode = GameMode::TwoPlayer;
                     return true; // Start game
+                }
+                else if (vsComputerButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                {
+                    currentMode = GameMode::VsComputer;
+                    if (!showComputerOptions())
+                    {
+                        return false; // User cancelled
+                    }
+                    return true; // Start game with computer
+                }
+                else if (hostLANButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                {
+                    currentMode = GameMode::LANHost;
+                    playerIsWhite = true; // Host always plays as white
+                    if (!showNetworkOptions(true))
+                    {
+                        return false; // User cancelled
+                    }
+                    return true; // Start LAN game as host
+                }
+                else if (joinLANButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+                {
+                    currentMode = GameMode::LANClient;
+                    playerIsWhite = false; // Client always plays as black
+                    if (!showNetworkOptions(false))
+                    {
+                        return false; // User cancelled
+                    }
+                    return true; // Start LAN game as client
                 }
                 else if (exitButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
                 {
@@ -284,30 +389,322 @@ bool ChessBoard::showMenu()
 
         // Highlight buttons on hover
         Vector2i mousePos = Mouse::getPosition(window);
-        if (startButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+        twoPlayerButton.setFillColor(twoPlayerButton.getGlobalBounds().contains(mousePos.x, mousePos.y) ? Color(70, 70, 70, 220) : Color(50, 50, 50, 200));
+        vsComputerButton.setFillColor(vsComputerButton.getGlobalBounds().contains(mousePos.x, mousePos.y) ? Color(70, 70, 70, 220) : Color(50, 50, 50, 200));
+        hostLANButton.setFillColor(hostLANButton.getGlobalBounds().contains(mousePos.x, mousePos.y) ? Color(70, 70, 70, 220) : Color(50, 50, 50, 200));
+        joinLANButton.setFillColor(joinLANButton.getGlobalBounds().contains(mousePos.x, mousePos.y) ? Color(70, 70, 70, 220) : Color(50, 50, 50, 200));
+        exitButton.setFillColor(exitButton.getGlobalBounds().contains(mousePos.x, mousePos.y) ? Color(70, 70, 70, 220) : Color(50, 50, 50, 200));
+
+        window.clear();
+        window.draw(menuSprite);
+        window.draw(twoPlayerButton);
+        window.draw(vsComputerButton);
+        window.draw(hostLANButton);
+        window.draw(joinLANButton);
+        window.draw(exitButton);
+        window.draw(twoPlayerText);
+        window.draw(vsComputerText);
+        window.draw(hostLANText);
+        window.draw(joinLANText);
+        window.draw(exitText);
+        window.display();
+    }
+
+    return false;
+}
+
+bool ChessBoard::showComputerOptions()
+{
+    // Get the same scaling factors as used in the main menu
+    float scaleX = static_cast<float>(WINDOW_WIDTH) / menuTexture.getSize().x;
+    float scaleY = static_cast<float>(WINDOW_HEIGHT) / menuTexture.getSize().y;
+    menuSprite.setScale(scaleX, scaleY);
+
+    // Calculate scalable positions based on window dimensions
+    centerX = WINDOW_WIDTH / 2.0f;
+    centerY = WINDOW_HEIGHT / 2.0f;
+    buttonWidth = WINDOW_WIDTH * 0.2f;
+    buttonHeight = WINDOW_HEIGHT * 0.08f;
+    verticalOffset = -buttonHeight;
+    verticalSpacing = WINDOW_HEIGHT * 0.03f;
+    difficultyY = centerY + verticalOffset + buttonHeight + verticalSpacing * 3;
+    backButtonY = difficultyY + buttonHeight + verticalSpacing * 3;
+
+    // Create buttons and text for computer options
+    RectangleShape colorWhiteButton(Vector2f(buttonWidth, buttonHeight));
+    colorWhiteButton.setPosition(centerX - buttonWidth - (WINDOW_WIDTH * 0.02f), centerY + verticalOffset);
+    colorWhiteButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape colorBlackButton(Vector2f(buttonWidth, buttonHeight));
+    colorBlackButton.setPosition(centerX + (WINDOW_WIDTH * 0.02f), centerY + verticalOffset);
+    colorBlackButton.setFillColor(Color(50, 50, 50, 200));
+
+    // Difficulty Buttons (5 buttons with adjusted width)
+    float difficultyButtonWidth = WINDOW_WIDTH * 0.1f; // Smaller buttons to fit 5
+    float horizontalSpacing = WINDOW_WIDTH * 0.01f;    // Spacing between buttons
+    float totalDifficultyWidth = 5 * difficultyButtonWidth + 4 * horizontalSpacing;
+    float firstDifficultyX = centerX - totalDifficultyWidth / 2.0f;
+
+    RectangleShape easyButton(Vector2f(difficultyButtonWidth, buttonHeight));
+    easyButton.setPosition(firstDifficultyX, difficultyY);
+    easyButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape kindaEasyButton(Vector2f(difficultyButtonWidth, buttonHeight));
+    kindaEasyButton.setPosition(firstDifficultyX + difficultyButtonWidth + horizontalSpacing, difficultyY);
+    kindaEasyButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape mediumButton(Vector2f(difficultyButtonWidth, buttonHeight));
+    mediumButton.setPosition(firstDifficultyX + 2 * (difficultyButtonWidth + horizontalSpacing), difficultyY);
+    mediumButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape kindaMediumButton(Vector2f(difficultyButtonWidth, buttonHeight));
+    kindaMediumButton.setPosition(firstDifficultyX + 3 * (difficultyButtonWidth + horizontalSpacing), difficultyY);
+    kindaMediumButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape hardButton(Vector2f(difficultyButtonWidth, buttonHeight));
+    hardButton.setPosition(firstDifficultyX + 4 * (difficultyButtonWidth + horizontalSpacing), difficultyY);
+    hardButton.setFillColor(Color(50, 50, 50, 200));
+
+    RectangleShape backButton(Vector2f(buttonWidth, buttonHeight));
+    backButton.setPosition(centerX - buttonWidth / 2, backButtonY);
+    backButton.setFillColor(Color(50, 50, 50, 200));
+
+    // Prepare font sizes
+    float largeFontSize = WINDOW_HEIGHT * 0.04f;
+    float mediumFontSize = WINDOW_HEIGHT * 0.035f;
+    float smallFontSize = WINDOW_HEIGHT * 0.025f; // Smaller for 5 buttons
+
+    // Button texts
+    chooseColorText.setFont(font);
+    chooseColorText.setString("Choose your color:");
+    chooseColorText.setCharacterSize(largeFontSize);
+    chooseColorText.setPosition(centerX - chooseColorText.getLocalBounds().width / 2,
+                                centerY + verticalOffset - buttonHeight);
+    chooseColorText.setFillColor(Color::White);
+
+    whiteText.setFont(font);
+    whiteText.setString("White");
+    whiteText.setCharacterSize(mediumFontSize);
+    whiteText.setPosition(colorWhiteButton.getPosition().x + (buttonWidth - whiteText.getLocalBounds().width) / 2,
+                          colorWhiteButton.getPosition().y + (buttonHeight - whiteText.getLocalBounds().height) / 2);
+    whiteText.setFillColor(Color::White);
+
+    blackText.setFont(font);
+    blackText.setString("Black");
+    blackText.setCharacterSize(mediumFontSize);
+    blackText.setPosition(colorBlackButton.getPosition().x + (buttonWidth - blackText.getLocalBounds().width) / 2,
+                          colorBlackButton.getPosition().y + (buttonHeight - blackText.getLocalBounds().height) / 2);
+    blackText.setFillColor(Color::White);
+
+    difficultyText.setFont(font);
+    difficultyText.setString("Choose difficulty:");
+    difficultyText.setCharacterSize(largeFontSize);
+    difficultyText.setPosition(centerX - difficultyText.getLocalBounds().width / 2,
+                               difficultyY - buttonHeight);
+    difficultyText.setFillColor(Color::White);
+
+    // Button texts for difficulty levels
+    Text easyText("Easy", font, smallFontSize);
+    easyText.setPosition(easyButton.getPosition().x + (difficultyButtonWidth - easyText.getLocalBounds().width) / 2,
+                         easyButton.getPosition().y + (buttonHeight - easyText.getLocalBounds().height) / 2);
+    easyText.setFillColor(Color::White);
+
+    Text kindaEasyText("K-Easy", font, smallFontSize);
+    kindaEasyText.setPosition(kindaEasyButton.getPosition().x + (difficultyButtonWidth - kindaEasyText.getLocalBounds().width) / 2,
+                              kindaEasyButton.getPosition().y + (buttonHeight - kindaEasyText.getLocalBounds().height) / 2);
+    kindaEasyText.setFillColor(Color::White);
+
+    Text mediumText("Medium", font, smallFontSize);
+    mediumText.setPosition(mediumButton.getPosition().x + (difficultyButtonWidth - mediumText.getLocalBounds().width) / 2,
+                           mediumButton.getPosition().y + (buttonHeight - mediumText.getLocalBounds().height) / 2);
+    mediumText.setFillColor(Color::White);
+
+    Text kindaMediumText("K-Medium", font, smallFontSize);
+    kindaMediumText.setPosition(kindaMediumButton.getPosition().x + (difficultyButtonWidth - kindaMediumText.getLocalBounds().width) / 2,
+                                kindaMediumButton.getPosition().y + (buttonHeight - kindaMediumText.getLocalBounds().height) / 2);
+    kindaMediumText.setFillColor(Color::White);
+
+    Text hardText("Hard", font, smallFontSize);
+    hardText.setPosition(hardButton.getPosition().x + (difficultyButtonWidth - hardText.getLocalBounds().width) / 2,
+                         hardButton.getPosition().y + (buttonHeight - hardText.getLocalBounds().height) / 2);
+    hardText.setFillColor(Color::White);
+
+    backText.setFont(font);
+    backText.setString("Back");
+    backText.setCharacterSize(mediumFontSize);
+    backText.setPosition(backButton.getPosition().x + (buttonWidth - backText.getLocalBounds().width) / 2,
+                         backButton.getPosition().y + (buttonHeight - backText.getLocalBounds().height) / 2);
+    backText.setFillColor(Color::White);
+
+    // Function to reset difficulty button colors
+    auto resetDifficultyColors = [&]()
+    {
+        easyButton.setFillColor(Color(50, 50, 50, 200));
+        kindaEasyButton.setFillColor(Color(50, 50, 50, 200));
+        mediumButton.setFillColor(Color(50, 50, 50, 200));
+        kindaMediumButton.setFillColor(Color(50, 50, 50, 200));
+        hardButton.setFillColor(Color(50, 50, 50, 200));
+    };
+
+    // Highlight current selections
+    if (playerIsWhite)
+    {
+        colorWhiteButton.setFillColor(Color(100, 200, 100, 220));
+    }
+    else
+    {
+        colorBlackButton.setFillColor(Color(100, 200, 100, 220));
+    }
+
+    resetDifficultyColors(); // Start with default colors
+    switch (computerDifficulty)
+    {
+    case ComputerDifficulty::Easy:
+        easyButton.setFillColor(Color(100, 200, 100, 220));
+        break;
+    case ComputerDifficulty::kindaEasy:
+        kindaEasyButton.setFillColor(Color(100, 200, 100, 220));
+        break;
+    case ComputerDifficulty::Medium:
+        mediumButton.setFillColor(Color(100, 200, 100, 220));
+        break;
+    case ComputerDifficulty::kindaMedium:
+        kindaMediumButton.setFillColor(Color(100, 200, 100, 220));
+        break;
+    case ComputerDifficulty::Hard:
+        hardButton.setFillColor(Color(100, 200, 100, 220));
+        break;
+    }
+
+    bool needsRedraw = false;
+
+    while (window.isOpen())
+    {
+        if (needsRedraw)
         {
-            startButton.setFillColor(Color(70, 70, 70, 220));
-        }
-        else
-        {
-            startButton.setFillColor(Color(50, 50, 50, 200));
+            // Rebuild UI with new dimensions
+            return showComputerOptions();
         }
 
-        if (exitButton.getGlobalBounds().contains(mousePos.x, mousePos.y))
+        Event event;
+        while (window.pollEvent(event))
         {
-            exitButton.setFillColor(Color(70, 70, 70, 220));
+            if (event.type == Event::Closed)
+            {
+                window.close();
+                return false;
+            }
+
+            if (event.type == Event::MouseButtonPressed)
+            {
+                // Get mouse position relative to the window
+                Vector2f mousePosF = window.mapPixelToCoords(Mouse::getPosition(window));
+
+                // Color selection
+                if (colorWhiteButton.getGlobalBounds().contains(mousePosF))
+                {
+                    playerIsWhite = true;
+                    colorWhiteButton.setFillColor(Color(100, 200, 100, 220));
+                    colorBlackButton.setFillColor(Color(50, 50, 50, 200));
+                }
+                else if (colorBlackButton.getGlobalBounds().contains(mousePosF))
+                {
+                    playerIsWhite = false;
+                    colorBlackButton.setFillColor(Color(100, 200, 100, 220));
+                    colorWhiteButton.setFillColor(Color(50, 50, 50, 200));
+                }
+                // Difficulty selection
+                else if (easyButton.getGlobalBounds().contains(mousePosF))
+                {
+                    computerDifficulty = ComputerDifficulty::Easy;
+                    resetDifficultyColors();
+                    easyButton.setFillColor(Color(100, 200, 100, 220));
+                }
+                else if (kindaEasyButton.getGlobalBounds().contains(mousePosF))
+                {
+                    computerDifficulty = ComputerDifficulty::kindaEasy;
+                    resetDifficultyColors();
+                    kindaEasyButton.setFillColor(Color(100, 200, 100, 220));
+                }
+                else if (mediumButton.getGlobalBounds().contains(mousePosF))
+                {
+                    computerDifficulty = ComputerDifficulty::Medium;
+                    resetDifficultyColors();
+                    mediumButton.setFillColor(Color(100, 200, 100, 220));
+                }
+                else if (kindaMediumButton.getGlobalBounds().contains(mousePosF))
+                {
+                    computerDifficulty = ComputerDifficulty::kindaMedium;
+                    resetDifficultyColors();
+                    kindaMediumButton.setFillColor(Color(100, 200, 100, 220));
+                }
+                else if (hardButton.getGlobalBounds().contains(mousePosF))
+                {
+                    computerDifficulty = ComputerDifficulty::Hard;
+                    resetDifficultyColors();
+                    hardButton.setFillColor(Color(100, 200, 100, 220));
+                }
+                // Back button
+                else if (backButton.getGlobalBounds().contains(mousePosF))
+                {
+                    return true; // Return to main menu with options selected
+                }
+            }
+
+            // Handle window resize events
+            if (event.type == Event::Resized)
+            {
+                // Update view to match new window size
+                FloatRect visibleArea(0, 0, event.size.width, event.size.height);
+                window.setView(View(visibleArea));
+
+                // Update window dimensions
+                WINDOW_WIDTH = event.size.width;
+                WINDOW_HEIGHT = event.size.height;
+
+                // Scale menu background
+                scaleX = static_cast<float>(WINDOW_WIDTH) / menuTexture.getSize().x;
+                scaleY = static_cast<float>(WINDOW_HEIGHT) / menuTexture.getSize().y;
+                menuSprite.setScale(scaleX, scaleY);
+
+                // Set flag to redraw UI
+                needsRedraw = true;
+            }
+        }
+
+        // Get mouse position in world coordinates for hover effects
+        Vector2f mousePosF = window.mapPixelToCoords(Mouse::getPosition(window));
+
+        // Highlight back button on hover
+        if (backButton.getGlobalBounds().contains(mousePosF))
+        {
+            backButton.setFillColor(Color(70, 70, 70, 220));
         }
         else
         {
-            exitButton.setFillColor(Color(50, 50, 50, 200));
+            backButton.setFillColor(Color(50, 50, 50, 200));
         }
 
         window.clear();
         window.draw(menuSprite);
-        window.draw(startButton);
-        window.draw(exitButton);
-        window.draw(startText);
-        window.draw(exitText);
+        window.draw(chooseColorText);
+        window.draw(colorWhiteButton);
+        window.draw(colorBlackButton);
+        window.draw(whiteText);
+        window.draw(blackText);
+        window.draw(difficultyText);
+        window.draw(easyButton);
+        window.draw(kindaEasyButton);
+        window.draw(mediumButton);
+        window.draw(kindaMediumButton);
+        window.draw(hardButton);
+        window.draw(easyText);
+        window.draw(kindaEasyText);
+        window.draw(mediumText);
+        window.draw(kindaMediumText);
+        window.draw(hardText);
+        window.draw(backButton);
+        window.draw(backText);
         window.display();
     }
 
@@ -536,7 +933,64 @@ void ChessBoard::runGame()
     GameLogic logic(getMatrix(), *this);
     bool pieceSelected = false;
     int selectedX = -1, selectedY = -1;
-    bool whiteTurn = true; // White starts first
+
+    // Note: whiteTurn is already set in resetGame(), so we don't need to set it here
+
+    // Draw the initial board state to ensure the window is rendered
+    window.clear(Color::Black);
+    for (int x = 0; x < BOARD_SIZE; x++)
+    {
+        for (int y = 0; y < BOARD_SIZE; y++)
+        {
+            RectangleShape square(Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+            square.setPosition(x * SQUARE_SIZE, y * SQUARE_SIZE);
+            square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(105, 146, 62));
+            window.draw(square);
+        }
+    }
+    drawPieces();
+    window.display();
+
+    // Add a small delay to ensure the window is fully rendered
+    sf::sleep(sf::milliseconds(500));
+
+    // If playing as black against computer, make the first move for the computer (white)
+    if (currentMode == GameMode::VsComputer && !playerIsWhite)
+    {
+        makeComputerMove();
+        whiteTurn = false; // Now it's player's (black) turn
+
+        // Redraw the board after the computer's move
+        window.clear(Color::Black);
+        for (int x = 0; x < BOARD_SIZE; x++)
+        {
+            for (int y = 0; y < BOARD_SIZE; y++)
+            {
+                RectangleShape square(Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+                square.setPosition(x * SQUARE_SIZE, y * SQUARE_SIZE);
+                square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(105, 146, 62));
+                window.draw(square);
+            }
+        }
+        drawPieces();
+        window.display();
+    }
+
+    // For LAN games, show waiting message if needed
+    Text waitingText;
+    if ((currentMode == GameMode::LANHost || currentMode == GameMode::LANClient) && waitingForOpponent)
+    {
+        waitingText.setFont(font);
+        waitingText.setString("Waiting for opponent to connect...");
+        waitingText.setCharacterSize(WINDOW_HEIGHT * 0.03f);
+        waitingText.setPosition(WINDOW_WIDTH / 2 - waitingText.getLocalBounds().width / 2,
+                                WINDOW_HEIGHT * 0.1f);
+        waitingText.setFillColor(Color::Yellow);
+
+        window.draw(waitingText);
+        window.display();
+    }
+
     vector<pair<int, int>> validMoves;
     // Create circle shapes for valid move indicators
     CircleShape moveIndicator(SQUARE_SIZE / 4);
@@ -548,6 +1002,73 @@ void ChessBoard::runGame()
 
     while (window.isOpen())
     {
+        // Handle network messages for LAN games
+        if ((currentMode == GameMode::LANHost || currentMode == GameMode::LANClient) && network)
+        {
+            handleNetworkMessages();
+
+            // Update waiting text if needed
+            if (waitingForOpponent)
+            {
+                // Process events to keep the window responsive
+                Event event;
+                while (window.pollEvent(event))
+                {
+                    if (event.type == Event::Closed)
+                    {
+                        window.close();
+                        return;
+                    }
+                }
+
+                // Clear the window and draw the board first
+                window.clear(Color::Black);
+                for (int x = 0; x < BOARD_SIZE; x++)
+                {
+                    for (int y = 0; y < BOARD_SIZE; y++)
+                    {
+                        RectangleShape square(Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+                        square.setPosition(x * SQUARE_SIZE, y * SQUARE_SIZE);
+                        square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(105, 146, 62));
+                        window.draw(square);
+                    }
+                }
+                drawPieces();
+
+                // Draw waiting message
+                waitingText.setString("Waiting for opponent to connect...");
+                waitingText.setPosition(WINDOW_WIDTH / 2 - waitingText.getLocalBounds().width / 2,
+                                        WINDOW_HEIGHT * 0.1f);
+                window.draw(waitingText);
+                window.display();
+
+                // Add a small delay to prevent high CPU usage
+                sf::sleep(sf::milliseconds(50));
+
+                // Skip the rest of the loop if waiting for opponent
+                continue;
+            }
+
+            // Show waiting for move message if it's not our turn
+            if (waitingForMove && !gameOver)
+            {
+                // Process events to keep the window responsive
+                Event event;
+                while (window.pollEvent(event))
+                {
+                    if (event.type == Event::Closed)
+                    {
+                        window.close();
+                        return;
+                    }
+                }
+
+                waitingText.setString("Waiting for opponent's move...");
+                waitingText.setPosition(WINDOW_WIDTH / 2 - waitingText.getLocalBounds().width / 2,
+                                        WINDOW_HEIGHT * 0.1f);
+            }
+        }
+
         // Check for checkmate at start of each loop
         if (!gameOver)
         {
@@ -556,31 +1077,54 @@ void ChessBoard::runGame()
                 gameOver = true;
                 whiteWon = !whiteTurn; // If it's white's turn and they're in checkmate, black won
 
+                // Send game over message for network games
+                if ((currentMode == GameMode::LANHost || currentMode == GameMode::LANClient) && network && opponentConnected)
+                {
+                    NetworkMessage gameOverMsg(MessageType::GameOver, whiteWon ? "white" : "black");
+                    if (currentMode == GameMode::LANHost)
+                    {
+                        network->sendToAllClients(gameOverMsg);
+                    }
+                    else
+                    {
+                        network->sendToServer(gameOverMsg);
+                    }
+                }
+
                 // Show game over screen
                 bool continueGame = showGameOverWindow(whiteWon);
                 if (continueGame)
                 {
-                    // Reset the game state
+                    // Reset the game completely
+                    resetGame();
+
+                    // Reset local game state variables
                     pieceSelected = false;
                     selectedX = -1;
                     selectedY = -1;
-                    whiteTurn = true; // Always start with white
                     validMoves.clear();
-                    gameOver = false;
-
-                    // Debug: Print the board state
-                    cout << "Board state after reset:" << endl;
-                    for (int y = 0; y < 8; y++)
-                    {
-                        for (int x = 0; x < 8; x++)
-                        {
-                            cout << board[x][y] << "\t";
-                        }
-                        cout << endl;
-                    }
 
                     // Reset game logic
                     logic.reset();
+
+                    // If playing as black, we need to redraw after the computer's first move
+                    if (currentMode == GameMode::VsComputer && !playerIsWhite)
+                    {
+                        // Redraw the board after the computer's move
+                        window.clear(Color::Black);
+                        for (int x = 0; x < BOARD_SIZE; x++)
+                        {
+                            for (int y = 0; y < BOARD_SIZE; y++)
+                            {
+                                RectangleShape square(Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+                                square.setPosition(x * SQUARE_SIZE, y * SQUARE_SIZE);
+                                square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(105, 146, 62));
+                                window.draw(square);
+                            }
+                        }
+                        drawPieces();
+                        window.display();
+                    }
                     continue;
                 }
                 else
@@ -662,6 +1206,12 @@ void ChessBoard::runGame()
 
                     if (!pieceSelected)
                     {
+                        // For network games, only allow moves when it's the player's turn
+                        if ((currentMode == GameMode::LANHost || currentMode == GameMode::LANClient) && waitingForMove)
+                        {
+                            continue; // Skip if waiting for opponent's move
+                        }
+
                         // Only allow selecting pieces of the current turn's color
                         if ((whiteTurn && getPiece(boardX, boardY) > 0) ||
                             (!whiteTurn && getPiece(boardX, boardY) < 0))
@@ -704,14 +1254,35 @@ void ChessBoard::runGame()
                                 break;
                             }
                         }
+
                         if (isValid)
                         {
+                            // Make the player move
                             logic.movePiece(selectedX, selectedY, boardX, boardY);
+
+                            // Record move in UCI format for Stockfish
+                            if (currentMode == GameMode::VsComputer)
+                            {
+                                string uciMove = moveToUci(selectedX, selectedY, boardX, boardY);
+                                if (!currentPosition.empty())
+                                {
+                                    currentPosition += " ";
+                                }
+                                currentPosition += uciMove;
+                                moveHistory.push_back(uciMove);
+                            }
+                            // Send move to opponent for network games
+                            else if ((currentMode == GameMode::LANHost || currentMode == GameMode::LANClient) && network && opponentConnected)
+                            {
+                                sendMoveToOpponent(selectedX, selectedY, boardX, boardY);
+                                waitingForMove = true; // Now wait for opponent's move
+                            }
+
                             whiteTurn = !whiteTurn; // Switch turns
                             pieceSelected = false;
                             validMoves.clear();
 
-                            // Check for checkmate after move
+                            // Check for checkmate after player move
                             if (logic.checkMate(!whiteTurn))
                             {
                                 gameOver = true;
@@ -721,32 +1292,99 @@ void ChessBoard::runGame()
                                 bool continueGame = showGameOverWindow(whiteWon);
                                 if (continueGame)
                                 {
-                                    // Reset the game state
+                                    // Reset the game completely
+                                    resetGame();
+
+                                    // Reset local game state variables
                                     pieceSelected = false;
                                     selectedX = -1;
                                     selectedY = -1;
-                                    whiteTurn = true; // Always start with white
                                     validMoves.clear();
-                                    gameOver = false;
-
-                                    // Debug: Print the board state
-                                    cout << "Board state after reset:" << endl;
-                                    for (int y = 0; y < 8; y++)
-                                    {
-                                        for (int x = 0; x < 8; x++)
-                                        {
-                                            cout << board[x][y] << "\t";
-                                        }
-                                        cout << endl;
-                                    }
 
                                     // Reset game logic
                                     logic.reset();
+
+                                    // If playing as black, we need to redraw after the computer's first move
+                                    if (currentMode == GameMode::VsComputer && !playerIsWhite)
+                                    {
+                                        // Redraw the board after the computer's move
+                                        window.clear(Color::Black);
+                                        for (int x = 0; x < BOARD_SIZE; x++)
+                                        {
+                                            for (int y = 0; y < BOARD_SIZE; y++)
+                                            {
+                                                RectangleShape square(Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+                                                square.setPosition(x * SQUARE_SIZE, y * SQUARE_SIZE);
+                                                square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(105, 146, 62));
+                                                window.draw(square);
+                                            }
+                                        }
+                                        drawPieces();
+                                        window.display();
+                                    }
+                                    continue;
                                 }
                                 else
                                 {
                                     window.close();
                                     return;
+                                }
+                            }
+
+                            // Make computer move if it's its turn and the game isn't over
+                            if (!gameOver && currentMode == GameMode::VsComputer &&
+                                ((whiteTurn && !playerIsWhite) || (!whiteTurn && playerIsWhite)))
+                            {
+                                makeComputerMove();
+                                whiteTurn = !whiteTurn; // Switch turns
+
+                                // Check for checkmate after computer move
+                                if (logic.checkMate(!whiteTurn))
+                                {
+                                    gameOver = true;
+                                    whiteWon = whiteTurn; // Computer won
+
+                                    // Show game over screen
+                                    bool continueGame = showGameOverWindow(whiteWon);
+                                    if (continueGame)
+                                    {
+                                        // Reset the game completely
+                                        resetGame();
+
+                                        // Reset local game state variables
+                                        pieceSelected = false;
+                                        selectedX = -1;
+                                        selectedY = -1;
+                                        validMoves.clear();
+
+                                        // Reset game logic
+                                        logic.reset();
+
+                                        // If playing as black, we need to redraw after the computer's first move
+                                        if (currentMode == GameMode::VsComputer && !playerIsWhite)
+                                        {
+                                            // Redraw the board after the computer's move
+                                            window.clear(Color::Black);
+                                            for (int x = 0; x < BOARD_SIZE; x++)
+                                            {
+                                                for (int y = 0; y < BOARD_SIZE; y++)
+                                                {
+                                                    RectangleShape square(Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+                                                    square.setPosition(x * SQUARE_SIZE, y * SQUARE_SIZE);
+                                                    square.setFillColor((x + y) % 2 == 0 ? Color(244, 244, 244) : Color(105, 146, 62));
+                                                    window.draw(square);
+                                                }
+                                            }
+                                            drawPieces();
+                                            window.display();
+                                        }
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        window.close();
+                                        return;
+                                    }
                                 }
                             }
                         }
@@ -808,6 +1446,13 @@ void ChessBoard::runGame()
                 }
                 window.draw(square);
             }
+        }
+
+        // Draw waiting message for network games if needed
+        if ((currentMode == GameMode::LANHost || currentMode == GameMode::LANClient) &&
+            (waitingForOpponent || waitingForMove) && !gameOver)
+        {
+            window.draw(waitingText);
         }
 
         // Draw valid move indicators
