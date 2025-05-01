@@ -123,5 +123,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - SFML library
 - Stockfish.org chess engine
 - Electron framework
--WintrCat for the amazing post-game analysis 
-----https://github.com/WintrCat----
+WintrCat for the amazing post-game analysis 
+https://github.com/WintrCat
