@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "target": "ES2015",
+        "module": "CommonJS",
+        "strict": false,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "lib": [
+            "DOM",
+            "ES2015",
+            "ES2016",
+            "ES2017"
+        ],
+        "allowJs": true,
+        "outDir": "./dist"
+    },
+    "include": [
+        "freechess/src/**/*"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+}

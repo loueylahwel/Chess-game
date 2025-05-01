@@ -1,11 +1,12 @@
-#ifndef GAMELOGIC_H
-#define GAMELOGIC_H
-
+#pragma once
 #include <vector>
-#include "ChessBoard.h"
-#include <string.h>
+#include <string>
+#include <SFML/Graphics.hpp>
 
 using namespace std;
+using namespace sf;
+
+class ChessBoard;
 
 class GameLogic
 {
@@ -25,6 +26,8 @@ private:
     bool whiteKingsideRookMoved;  // Has white kingside rook moved?
     bool blackQueensideRookMoved; // Has black queenside rook moved?
     bool blackKingsideRookMoved;  // Has black kingside rook moved?
+
+    vector<string> moveHistory; // Store moves in algebraic notation
 
     // Helper methods for castling
     bool canCastle(bool isWhite, bool isKingside) const;
@@ -49,6 +52,9 @@ public:
     void resetEnPassant();
     bool isEnPassantCapture(int fromX, int fromY, int toX, int toY) const;
     bool isCastlingMove(int fromX, int fromY, int toX, int toY) const;
-};
 
-#endif
+    // New methods for PGN generation
+    void addMoveToHistory(int fromX, int fromY, int toX, int toY);
+    string generatePGN() const;
+    string squareToAlgebraic(int x, int y) const;
+};

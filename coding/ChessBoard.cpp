@@ -3,6 +3,13 @@
 #include <iostream>
 #include "GameLogic.h"
 #include "ChessBoard.h"
+#include <fstream>
+#include <algorithm>
+#include <random>
+#include <chrono>
+#include <direct.h>   // For _getcwd
+#include <stdlib.h>   // For MAX_PATH
+#include <sys/stat.h> // For stat and file checking
 
 using namespace std;
 using namespace sf;
@@ -16,6 +23,7 @@ float PIECE_SCALE = 0.9f;
 
 ChessBoard::ChessBoard() : window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "ChessGame"),
                            board(BOARD_SIZE, vector<int>(BOARD_SIZE, 0)),
+                           logic(board, *this), // Initialize GameLogic
                            gameOver(false),
                            whiteWon(false),
                            whiteTurn(true),
@@ -785,17 +793,72 @@ bool ChessBoard::showGameOverWindow(bool whiteWinner)
             if (event.type == Event::MouseButtonPressed)
             {
                 // Convert screen coordinates to world coordinates
-                Vector2f mouseWorldPos = window.mapPixelToCoords(Vector2i(event.mouseButton.x, event.mouseButton.y));
+                Vector2f mousePos = window.mapPixelToCoords(Vector2i(event.mouseButton.x, event.mouseButton.y));
 
                 // Check if analysis button was clicked
-                if (analysisButton.getGlobalBounds().contains(mouseWorldPos))
+                if (analysisButton.getGlobalBounds().contains(mousePos))
                 {
-                    // TODO: Implement analysis functionality
-                    return false; // For now, just close the window
+                    // Generate PGN from the game and update the file
+                    updatePgnFile();
+
+                    // Create a temporary file to pass the PGN to the electron app
+                    char cwd[1024];
+                    if (_getcwd(cwd, sizeof(cwd)) != NULL)
+                    {
+                        // Get the PGN file path
+                        string pgnFilePath = string(cwd) + "/temp_game.pgn";
+
+                        // Create a simple batch file to launch the analyzer
+                        string tempBatPath = string(cwd) + "\\temp_launch.bat";
+                        ofstream batFile(tempBatPath);
+                        if (batFile.is_open())
+                        {
+                            batFile << "@echo off\n";
+                            batFile << "cd \"" << cwd << "\\chessAnalysis\"\n";
+                            batFile << "node_modules\\.bin\\electron . \"" << pgnFilePath << "\"\n";
+                            batFile.close();
+
+                            // Launch the batch file
+                            string cmd = "start \"Chess Analyzer\" \"" + tempBatPath + "\"";
+                            system(cmd.c_str());
+                        }
+                        else
+                        {
+                            // Fallback to direct command if batch file creation fails
+                            string cmd = "start cmd /c \"cd \"" + string(cwd) + "\\chessAnalysis\" && node_modules\\.bin\\electron . \"" + pgnFilePath + "\"\"";
+                            system(cmd.c_str());
+                        }
+
+                        // Show a message to the user about the analysis tool
+                        RectangleShape infoPanel(Vector2f(panelWidth, panelHeight * 0.3f));
+                        infoPanel.setPosition(
+                            currentView.getCenter().x - panelWidth / 2,
+                            currentView.getCenter().y - panelHeight * 0.15f);
+                        infoPanel.setFillColor(Color(50, 100, 50, 250));
+
+                        Text infoText("Launching Chess Analyzer. Please wait while it loads...", font, static_cast<unsigned int>(16 * fontScaleFactor));
+                        infoText.setPosition(
+                            currentView.getCenter().x - infoText.getLocalBounds().width / 2,
+                            infoPanel.getPosition().y + (infoPanel.getSize().y - infoText.getLocalBounds().height) / 2);
+                        infoText.setFillColor(Color::White);
+
+                        window.draw(infoPanel);
+                        window.draw(infoText);
+                        window.display();
+
+                        // Wait for a moment so the user can see the message
+                        sf::sleep(sf::seconds(3));
+                    }
+                    else
+                    {
+                        cerr << "Error getting current directory" << endl;
+                    }
+
+                    return false; // Close the game over window but keep the main window open
                 }
 
                 // Check if new game button was clicked
-                if (newGameButton.getGlobalBounds().contains(mouseWorldPos))
+                if (newGameButton.getGlobalBounds().contains(mousePos))
                 {
                     // Reset the game completely
                     initBoard();                // Reset board array to starting position
@@ -954,6 +1017,9 @@ void ChessBoard::runGame()
     // Add a small delay to ensure the window is fully rendered
     sf::sleep(sf::milliseconds(500));
 
+    // Initialize the PGN file at the start of the game
+    updatePgnFile();
+
     // If playing as black against computer, make the first move for the computer (white)
     if (currentMode == GameMode::VsComputer && !playerIsWhite)
     {
@@ -1037,33 +1103,6 @@ void ChessBoard::runGame()
 
                 // Draw waiting message
                 waitingText.setString("Waiting for opponent to connect...");
-                waitingText.setPosition(WINDOW_WIDTH / 2 - waitingText.getLocalBounds().width / 2,
-                                        WINDOW_HEIGHT * 0.1f);
-                window.draw(waitingText);
-                window.display();
-
-                // Add a small delay to prevent high CPU usage
-                sf::sleep(sf::milliseconds(50));
-
-                // Skip the rest of the loop if waiting for opponent
-                continue;
-            }
-
-            // Show waiting for move message if it's not our turn
-            if (waitingForMove && !gameOver)
-            {
-                // Process events to keep the window responsive
-                Event event;
-                while (window.pollEvent(event))
-                {
-                    if (event.type == Event::Closed)
-                    {
-                        window.close();
-                        return;
-                    }
-                }
-
-                waitingText.setString("Waiting for opponent's move...");
                 waitingText.setPosition(WINDOW_WIDTH / 2 - waitingText.getLocalBounds().width / 2,
                                         WINDOW_HEIGHT * 0.1f);
             }
@@ -1260,6 +1299,9 @@ void ChessBoard::runGame()
                             // Make the player move
                             logic.movePiece(selectedX, selectedY, boardX, boardY);
 
+                            // Update PGN file after each move
+                            updatePgnFile();
+
                             // Record move in UCI format for Stockfish
                             if (currentMode == GameMode::VsComputer)
                             {
@@ -1337,6 +1379,9 @@ void ChessBoard::runGame()
                             {
                                 makeComputerMove();
                                 whiteTurn = !whiteTurn; // Switch turns
+
+                                // Update PGN file after computer move
+                                updatePgnFile();
 
                                 // Check for checkmate after computer move
                                 if (logic.checkMate(!whiteTurn))
@@ -1426,6 +1471,14 @@ void ChessBoard::runGame()
             }
         }
 
+        // Update the PGN file periodically to ensure it's always current
+        static Clock pgnUpdateClock;
+        if (pgnUpdateClock.getElapsedTime().asSeconds() > 5.0f) // Update every 5 seconds
+        {
+            updatePgnFile();
+            pgnUpdateClock.restart();
+        }
+
         window.clear(Color::Black); // Clear with black for letter/pillarboxing
         // Draw board
         for (int x = 0; x < BOARD_SIZE; x++)
@@ -1480,6 +1533,111 @@ void ChessBoard::runGame()
         drawPieces();
         window.display();
     }
+}
+
+// Method to update the PGN file with the current game state
+void ChessBoard::updatePgnFile()
+{
+    // Get current date in YYYY.MM.DD format
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    string date = to_string(1900 + ltm->tm_year) + "." +
+                  (ltm->tm_mon + 1 < 10 ? "0" : "") + to_string(ltm->tm_mon + 1) + "." +
+                  (ltm->tm_mday < 10 ? "0" : "") + to_string(ltm->tm_mday);
+
+    // Determine the result based on the game state
+    string result = "*";
+    if (!algebraicMoves.empty())
+    {
+        if (gameOver)
+        {
+            result = whiteWon ? "1-0" : "0-1";
+        }
+    }
+
+    // Create PGN header
+    string pgn = "[Event \"Chess Game\"]\n";
+    pgn += "[Site \"Local Game\"]\n";
+    pgn += "[Date \"" + date + "\"]\n";
+    pgn += "[Round \"1\"]\n";
+    pgn += "[White \"Player 1\"]\n";
+    pgn += "[Black \"Player 2\"]\n";
+    pgn += "[Result \"" + result + "\"]\n\n";
+
+    // Add moves with proper formatting
+    int lineLength = 0;
+    for (size_t i = 0; i < algebraicMoves.size(); i++)
+    {
+        string moveText;
+        if (i % 2 == 0)
+        {
+            moveText = to_string(i / 2 + 1) + ". " + algebraicMoves[i] + " ";
+        }
+        else
+        {
+            moveText = algebraicMoves[i] + " ";
+        }
+
+        // Handle line wrapping for better readability
+        if (lineLength + moveText.length() > 80)
+        {
+            pgn += "\n";
+            lineLength = 0;
+        }
+
+        pgn += moveText;
+        lineLength += moveText.length();
+    }
+
+    // Add result at the end
+    pgn += result;
+
+    // Get current working directory
+    char cwd[1024];
+    if (_getcwd(cwd, sizeof(cwd)) == NULL)
+    {
+        cerr << "Error getting current directory" << endl;
+        return;
+    }
+
+    // Create the PGN file path
+    string pgnFilePath = string(cwd) + "/temp_game.pgn";
+
+    // Try to open the file with exclusive access
+    ofstream pgnFile(pgnFilePath, ios::out | ios::trunc);
+    if (!pgnFile.is_open())
+    {
+        cerr << "Warning: Could not open PGN file for writing. It may be in use by another process." << endl;
+
+        // Try with a different filename
+        string altPgnFilePath = string(cwd) + "/temp_game_new.pgn";
+        ofstream altPgnFile(altPgnFilePath, ios::out | ios::trunc);
+        if (altPgnFile.is_open())
+        {
+            altPgnFile << pgn;
+            altPgnFile.close();
+            cout << "PGN written to alternate file: " << altPgnFilePath << endl;
+
+            // Try to rename the file
+            if (remove(pgnFilePath.c_str()) == 0)
+            {
+                if (rename(altPgnFilePath.c_str(), pgnFilePath.c_str()) != 0)
+                {
+                    cerr << "Error renaming PGN file" << endl;
+                }
+            }
+        }
+        else
+        {
+            cerr << "Error: Could not open alternate PGN file for writing" << endl;
+        }
+        return;
+    }
+
+    // Write the PGN to the file
+    pgnFile << pgn;
+    pgnFile.close();
+    cout << "PGN file updated successfully" << endl;
 }
 
 // New method to calculate sizes and scales
@@ -1547,4 +1705,34 @@ void ChessBoard::updateBoardAndPieceSizes()
             }
         }
     }
+}
+
+void ChessBoard::resetGame()
+{
+    // Reset board to initial state
+    initBoard();
+    initializePieces();
+    updateBoardAndPieceSizes();
+
+    // Reset game state
+    gameOver = false;
+    whiteWon = false;
+
+    // Clear move histories
+    moveHistory.clear();
+    algebraicMoves.clear();
+    currentPosition = "";
+
+    // Always start with white's turn
+    whiteTurn = true;
+
+    // For network games, set waiting state based on player color
+    if (currentMode == GameMode::LANHost || currentMode == GameMode::LANClient)
+    {
+        // In LAN games, host is white, client is black
+        waitingForMove = !playerIsWhite; // Wait for opponent's move if playing as black
+    }
+
+    // Note: If playing as black against computer, the first move for the computer (white)
+    // will be handled in runGame() to ensure the window is fully rendered
 }

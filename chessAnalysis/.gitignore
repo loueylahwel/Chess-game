@@ -1,0 +1,19 @@
+# Node.js dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+temp_game.pgn
+
+# OS-specific files
+.DS_Store
+Thumbs.db

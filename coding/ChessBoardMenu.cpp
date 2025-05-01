@@ -502,7 +502,6 @@ bool ChessBoard::showComputerOptions()
 
     return false;
 }
-#endif // CHESSBOARD_CPP_INCLUDED
 
 void ChessBoard::resetGame()
 {
@@ -532,3 +531,4 @@ void ChessBoard::resetGame()
     // Note: If playing as black against computer, the first move for the computer (white)
     // will be handled in runGame() to ensure the window is fully rendered
 }
+#endif // CHESSBOARD_CPP_INCLUDED

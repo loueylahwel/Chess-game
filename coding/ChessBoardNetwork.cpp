@@ -5,6 +5,8 @@
 #include "GameLogic.h"
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <direct.h> // For _getcwd
 
 using namespace std;
 using namespace sf;
@@ -478,6 +480,9 @@ void ChessBoard::processNetworkMove(const string &moveData)
         }
 
         logic.movePiece(fromX, fromY, toX, toY);
+
+        // Update PGN file after network move
+        updatePgnFile();
 
         // Update turn
         whiteTurn = !whiteTurn;

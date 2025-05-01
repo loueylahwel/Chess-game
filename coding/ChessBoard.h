@@ -10,6 +10,7 @@
 #include <string>
 #include <memory>
 #include "NetworkManager.h"
+#include "GameLogic.h" // Add GameLogic header
 
 // Include Windows headers specifically for StockfishEngine class definition
 #ifdef _WIN32
@@ -77,6 +78,7 @@ class ChessBoard
 private:
     RenderWindow window;
     vector<vector<int>> board;
+    GameLogic logic; // Add GameLogic member
     Texture blackpieces[6];
     Texture whitepieces[6];
     Sprite blackSprites[6];
@@ -96,7 +98,8 @@ private:
     ComputerDifficulty computerDifficulty;
     unique_ptr<StockfishEngine> engine;
     string currentPosition;
-    vector<string> moveHistory;
+    vector<string> moveHistory;    // For UCI format moves
+    vector<string> algebraicMoves; // For algebraic notation moves (PGN format)
 
     // Network game variables
     unique_ptr<NetworkManager> network;
@@ -142,6 +145,9 @@ private:
     void processNetworkMove(const string &moveData);
     void onNetworkMessage(const NetworkMessage &message);
 
+    // PGN file handling
+    void updatePgnFile();
+
 public:
     ChessBoard();
     vector<vector<Sprite>> &getPieceSprites() { return pieceSprites; }
@@ -154,6 +160,7 @@ public:
     void drawPieces();
     void drawPiece(Sprite sprite, int x, int y);
     void run();
+    void addAlgebraicMove(const string &move) { algebraicMoves.push_back(move); }
 };
 
 #endif // CHESSBOARD_H

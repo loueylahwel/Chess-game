@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple PGN Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .pgn-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .pgn-text {
+            white-space: pre-wrap;
+            font-family: monospace;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .links {
+            margin-top: 30px;
+            text-align: center;
+        }
+        .links a {
+            display: inline-block;
+            margin: 0 10px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .links a:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple PGN Viewer</h1>
+    
+    <div class="pgn-container">
+        <h2>Your Game PGN:</h2>
+        <div class="pgn-text" id="pgn-content">Loading PGN...</div>
+    </div>
+    
+    <div class="links">
+        <a href="https://lichess.org/analysis" target="_blank">Analyze on Lichess</a>
+        <a href="https://chess.com/analysis" target="_blank">Analyze on Chess.com</a>
+    </div>
+
+    <script>
+        // Function to load the PGN file
+        async function loadPGN() {
+            try {
+                // Get the PGN file path from URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const pgnPath = urlParams.get('pgn');
+                
+                if (!pgnPath) {
+                    document.getElementById('pgn-content').textContent = 'No PGN file specified.';
+                    return;
+                }
+                
+                // Fetch the PGN file
+                const response = await fetch(pgnPath);
+                if (!response.ok) {
+                    throw new Error(`Failed to load PGN file: ${response.status} ${response.statusText}`);
+                }
+                
+                const pgnText = await response.text();
+                document.getElementById('pgn-content').textContent = pgnText;
+                
+                // Update the Lichess link to include the PGN
+                const lichessLink = document.querySelector('a[href*="lichess.org"]');
+                if (lichessLink) {
+                    lichessLink.href = `https://lichess.org/paste?pgn=${encodeURIComponent(pgnText)}`;
+                }
+                
+                // Update the Chess.com link to include the PGN
+                const chesscomLink = document.querySelector('a[href*="chess.com"]');
+                if (chesscomLink) {
+                    chesscomLink.href = `https://chess.com/analysis?pgn=${encodeURIComponent(pgnText)}`;
+                }
+            } catch (error) {
+                console.error('Error loading PGN:', error);
+                document.getElementById('pgn-content').textContent = `Error loading PGN: ${error.message}`;
+            }
+        }
+        
+        // Load the PGN when the page loads
+        window.addEventListener('DOMContentLoaded', loadPGN);
+    </script>
+</body>
+</html>

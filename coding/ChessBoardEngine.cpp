@@ -2,6 +2,8 @@
 #include "GameLogic.h"
 #include <sstream>
 #include <iostream>
+#include <fstream>
+#include <direct.h> // For _getcwd
 
 using namespace std;
 using namespace sf;
@@ -46,6 +48,9 @@ void ChessBoard::applyUciMove(const string &uciMove)
     // Execute the move
     GameLogic logic(board, *this);
     logic.movePiece(fromX, fromY, toX, toY);
+
+    // Update PGN file after computer move
+    updatePgnFile();
 
     // Add move to history
     if (!currentPosition.empty())

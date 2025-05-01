@@ -3,6 +3,7 @@
 #include <math.h>
 #include <SFML/Audio.hpp>
 #include <iostream>
+#include <ctime>
 
 using namespace std;
 
@@ -41,6 +42,9 @@ void GameLogic::reset()
     whiteKingsideRookMoved = false;
     blackQueensideRookMoved = false;
     blackKingsideRookMoved = false;
+
+    // Clear move history
+    moveHistory.clear();
 }
 
 bool GameLogic::isWhite(int x, int y) const
@@ -452,6 +456,9 @@ bool GameLogic::isValidMove(int x, int y, int xx, int yy)
 
 void GameLogic::movePiece(int x, int y, int xx, int yy)
 {
+    // Record the move before making it
+    addMoveToHistory(x, y, xx, yy);
+
     // Determine if this move puts the opponent in check
     bool isWhitePiece = board[x][y] > 0;
     bool putsInCheck = moveWouldCheck(x, y, xx, yy, isWhitePiece);
@@ -574,6 +581,21 @@ void GameLogic::movePiece(int x, int y, int xx, int yy)
         auto &pieceSprites = chessBoard.getPieceSprites();
         pieceSprites[rookToX][rookY] = pieceSprites[rookFromX][rookY];
         pieceSprites[rookFromX][rookY] = Sprite();
+    }
+
+    // Handle pawn promotion
+    if (abs(board[x][y]) == 10) // If it's a pawn
+    {
+        // White pawn reaching the top row
+        if (board[x][y] > 0 && yy == 0)
+        {
+            board[x][y] = 11; // Promote to white queen
+        }
+        // Black pawn reaching the bottom row
+        else if (board[x][y] < 0 && yy == 7)
+        {
+            board[x][y] = -11; // Promote to black queen
+        }
     }
 
     // Move the piece on the board
@@ -1092,4 +1114,123 @@ bool GameLogic::isCastlingMove(int fromX, int fromY, int toX, int toY) const
 
     // It's a castling move
     return true;
+}
+
+string GameLogic::squareToAlgebraic(int x, int y) const
+{
+    string file = string(1, char('a' + x));
+    string rank = to_string(8 - y);
+    return file + rank;
+}
+
+void GameLogic::addMoveToHistory(int fromX, int fromY, int toX, int toY)
+{
+    string move;
+    int piece = abs(board[fromX][fromY]);
+    bool isCapture = board[toX][toY] != 0 || isEnPassantCapture(fromX, fromY, toX, toY);
+
+    // Add piece letter for non-pawns
+    if (piece != 10)
+    {
+        switch (piece)
+        {
+        case 6:
+            move += "R";
+            break; // Rook
+        case 7:
+            move += "B";
+            break; // Bishop
+        case 8:
+            move += "N";
+            break; // Knight
+        case 9:
+            move += "K";
+            break; // King
+        case 11:
+            move += "Q";
+            break; // Queen
+        }
+    }
+
+    // Add capture symbol
+    if (isCapture)
+    {
+        if (piece == 10)
+            move += squareToAlgebraic(fromX, fromY)[0]; // Add file for pawn captures
+        move += "x";
+    }
+
+    // Add destination square
+    move += squareToAlgebraic(toX, toY);
+
+    // Add to both histories
+    moveHistory.push_back(move);
+    chessBoard.addAlgebraicMove(move); // Add to ChessBoard's history
+}
+
+string GameLogic::generatePGN() const
+{
+    // Get current date in YYYY.MM.DD format
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    string date = to_string(1900 + ltm->tm_year) + "." +
+                  (ltm->tm_mon + 1 < 10 ? "0" : "") + to_string(ltm->tm_mon + 1) + "." +
+                  (ltm->tm_mday < 10 ? "0" : "") + to_string(ltm->tm_mday);
+
+    // Determine the result based on the game state
+    string result = "*";
+    if (!moveHistory.empty())
+    {
+        // Create a temporary GameLogic to check the game state
+        GameLogic tempLogic(const_cast<vector<vector<int>> &>(board), const_cast<ChessBoard &>(chessBoard));
+
+        if (tempLogic.checkMate(true))
+        {
+            result = "0-1"; // Black wins
+        }
+        else if (tempLogic.checkMate(false))
+        {
+            result = "1-0"; // White wins
+        }
+        // Note: We're not checking for stalemate since the method isn't implemented
+    }
+
+    // Create PGN header
+    string pgn = "[Event \"Chess Game\"]\n";
+    pgn += "[Site \"Local Game\"]\n";
+    pgn += "[Date \"" + date + "\"]\n";
+    pgn += "[Round \"1\"]\n";
+    pgn += "[White \"Player 1\"]\n";
+    pgn += "[Black \"Player 2\"]\n";
+    pgn += "[Result \"" + result + "\"]\n\n";
+
+    // Add moves with proper formatting
+    int lineLength = 0;
+    for (size_t i = 0; i < moveHistory.size(); i++)
+    {
+        string moveText;
+        if (i % 2 == 0)
+        {
+            moveText = to_string(i / 2 + 1) + ". " + moveHistory[i] + " ";
+        }
+        else
+        {
+            moveText = moveHistory[i] + " ";
+        }
+
+        // Handle line wrapping for better readability
+        if (lineLength + moveText.length() > 80)
+        {
+            pgn += "\n";
+            lineLength = 0;
+        }
+
+        pgn += moveText;
+        lineLength += moveText.length();
+    }
+
+    // Add result at the end
+    pgn += result;
+
+    return pgn;
 }
