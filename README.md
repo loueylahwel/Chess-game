@@ -120,8 +120,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- SFML library for game graphics
-- Stockfish chess engine
+- SFML library
+- Stockfish.org chess engine
 - Electron framework
-- Chess piece designs from [source]
-- Sound effects from [source]
+-WintrCat for the amazing post-game analysis 
+----https://github.com/WintrCat----
